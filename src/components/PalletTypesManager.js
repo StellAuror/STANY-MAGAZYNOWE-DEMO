@@ -1,4 +1,4 @@
-import { el } from '../utils/dom.js';
+import { el, showMultiPrompt, showConfirm } from '../utils/dom.js';
 import { getState } from '../store/store.js';
 import { addPalletType, updatePalletType, deletePalletType } from '../store/actions.js';
 
@@ -68,39 +68,42 @@ export function PalletTypesManager() {
   return container;
 }
 
-function handleAdd() {
-  const name = prompt('Nazwa rodzaju palety:');
-  if (!name) return;
-
-  const dimensions = prompt('Wymiary (np. 1200x800x144 mm):');
-  const maxLoad = prompt('Maksymalne obciążenie (np. 1500 kg):');
-  const notes = prompt('Uwagi (opcjonalnie):');
+async function handleAdd() {
+  const result = await showMultiPrompt('Nowy rodzaj palety', [
+    { label: 'Nazwa', key: 'name', required: true, placeholder: 'np. Europaleta' },
+    { label: 'Wymiary', key: 'dimensions', placeholder: 'np. 1200x800x144 mm' },
+    { label: 'Maksymalne obciążenie', key: 'maxLoad', placeholder: 'np. 1500 kg' },
+    { label: 'Uwagi (opcjonalnie)', key: 'notes', placeholder: '' },
+  ]);
+  if (!result) return;
 
   addPalletType({
-    name,
-    dimensions: dimensions || '',
-    maxLoad: maxLoad || '',
-    notes: notes || '',
+    name: result.name,
+    dimensions: result.dimensions || '',
+    maxLoad: result.maxLoad || '',
+    notes: result.notes || '',
   });
 }
 
-function handleEdit(pallet) {
-  const name = prompt('Nazwa rodzaju palety:', pallet.name);
-  if (!name) return;
-
-  const dimensions = prompt('Wymiary:', pallet.dimensions);
-  const maxLoad = prompt('Maksymalne obciążenie:', pallet.maxLoad);
-  const notes = prompt('Uwagi:', pallet.notes);
+async function handleEdit(pallet) {
+  const result = await showMultiPrompt('Edytuj rodzaj palety', [
+    { label: 'Nazwa', key: 'name', required: true, defaultValue: pallet.name },
+    { label: 'Wymiary', key: 'dimensions', defaultValue: pallet.dimensions || '' },
+    { label: 'Maksymalne obciążenie', key: 'maxLoad', defaultValue: pallet.maxLoad || '' },
+    { label: 'Uwagi', key: 'notes', defaultValue: pallet.notes || '' },
+  ]);
+  if (!result) return;
 
   updatePalletType(pallet.id, {
-    name,
-    dimensions: dimensions || '',
-    maxLoad: maxLoad || '',
-    notes: notes || '',
+    name: result.name,
+    dimensions: result.dimensions || '',
+    maxLoad: result.maxLoad || '',
+    notes: result.notes || '',
   });
 }
 
-function handleDelete(pallet) {
-  if (!confirm(`Czy na pewno chcesz usunąć rodzaj palety "${pallet.name}"?`)) return;
+async function handleDelete(pallet) {
+  const confirmed = await showConfirm(`Czy na pewno chcesz usunąć rodzaj palety „${pallet.name}"?`);
+  if (!confirmed) return;
   deletePalletType(pallet.id);
 }

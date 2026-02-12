@@ -374,7 +374,10 @@ export async function seedInitialData() {
 
   // --- Demo data (only if no contractors exist yet) ---
   if (state.contractors.length > 0) return;
-  await seedDemoData();
+  
+  // Get fresh state after pallet types update
+  const updatedState = getState();
+  await seedDemoData(updatedState.palletTypes);
 }
 
 /** Deterministic pseudo-random based on seed string */
@@ -389,17 +392,20 @@ function seededRandom(seed) {
   };
 }
 
-async function seedDemoData() {
+async function seedDemoData(palletTypes) {
   const rng = seededRandom('indeka-demo-2026');
   const now = Date.now();
 
-  // --- Contractors ---
+  // Get pallet type IDs to assign to contractors
+  const palletTypeIds = palletTypes.map(pt => pt.id);
+
+  // --- Contractors ---  
   const contractors = [
-    { id: 'ctr1', name: 'Budimex S.A.', isActive: true },
-    { id: 'ctr2', name: 'Polskie Składy Sp. z o.o.', isActive: true },
-    { id: 'ctr3', name: 'EkoLogistyka', isActive: true },
-    { id: 'ctr4', name: 'Jan Kowalski Transport', isActive: true },
-    { id: 'ctr5', name: 'MegaPak Sp.J.', isActive: true },
+    { id: 'ctr1', name: 'Budimex S.A.', isActive: true, acceptedPalletTypes: palletTypeIds },
+    { id: 'ctr2', name: 'Polskie Składy Sp. z o.o.', isActive: true, acceptedPalletTypes: palletTypeIds },
+    { id: 'ctr3', name: 'EkoLogistyka', isActive: true, acceptedPalletTypes: palletTypeIds },
+    { id: 'ctr4', name: 'Jan Kowalski Transport', isActive: true, acceptedPalletTypes: palletTypeIds },
+    { id: 'ctr5', name: 'MegaPak Sp.J.', isActive: true, acceptedPalletTypes: palletTypeIds },
   ];
   await adapter.putMany(STORES.CONTRACTORS, contractors);
 
@@ -704,4 +710,39 @@ export async function updateServiceDefinition(id, updates) {
   const updated = serviceDefinitions.find(s => s.id === id);
   await adapter.put(STORES.SERVICE_DEFINITIONS, updated);
   setState({ serviceDefinitions });
+}
+
+// --- Database Reset ---
+
+export async function clearAllDataAndReseed() {
+  // Clear all stores
+  const stores = Object.values(STORES);
+  for (const storeName of stores) {
+    const allRecords = await adapter.getAll(storeName);
+    for (const record of allRecords) {
+      // Settings store uses 'key' as keyPath, others use 'id'
+      const keyToDelete = record.key || record.id;
+      if (keyToDelete) {
+        await adapter.delete(storeName, keyToDelete);
+      }
+    }
+  }
+  
+  // Reset state
+  setState({
+    warehouses: [],
+    contractors: [],
+    serviceDefinitions: [],
+    contractorServices: [],
+    servicePrices: [],
+    palletPrices: [],
+    dailyInventory: [],
+    palletTypes: [],
+    auditLog: [],
+  });
+  
+  // Reload all data (will seed initial data because contractors.length === 0)
+  await loadAllData();
+  await seedInitialData();
+  await loadAllData();
 }

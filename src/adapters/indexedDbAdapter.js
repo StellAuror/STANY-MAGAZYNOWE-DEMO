@@ -1,6 +1,6 @@
 import { STORES } from './dataAdapter.js';
 
-const DB_NAME = 'INDEKA_DB';
+const DB_NAME = 'MAGAZYN_DB';
 const DB_VERSION = 3;
 
 /** @type {IDBDatabase|null} */

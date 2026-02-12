@@ -1,4 +1,4 @@
-import { el, clearElement } from '../utils/dom.js';
+import { el, clearElement, showPrompt, showAlert } from '../utils/dom.js';
 import {
   getPalletPrices, getCurrentUser,
   getContractorById, getPalletTypes, getPalletPriceEditorState,
@@ -80,19 +80,20 @@ export function PalletPriceEditor() {
       // Edit button
       const editBtn = el('button', {
         className: 'btn-secondary btn-small',
-        onClick: () => {
-          const newPrice = prompt(`Nowa stawka (aktualna: ${p.pricePerUnit.toFixed(2)}):`);
+        onClick: async () => {
+          const newPrice = await showPrompt(`Nowa stawka (aktualna: ${p.pricePerUnit.toFixed(2)}):`, String(p.pricePerUnit.toFixed(2)));
           if (newPrice !== null) {
             const parsed = parsePrice(newPrice);
             if (parsed !== null) {
-              pricingService.updatePalletPrice(p.id, {
+              await pricingService.updatePalletPrice(p.id, {
                 contractorId,
                 palletTypeId,
                 direction,
                 pricePerUnit: parsed,
-              }, userName).then(() => closePalletPriceEditor());
+              }, userName);
+              closePalletPriceEditor();
             } else {
-              alert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
+              await showAlert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
             }
           }
         },
@@ -138,13 +139,13 @@ export function PalletPriceEditor() {
       const priceVal = priceInput.value;
 
       if (!isValidDate(effectiveFrom)) {
-        alert('Wprowadź prawidłową datę.');
+        await showAlert('Wprowadź prawidłową datę.');
         return;
       }
 
       const parsed = parsePrice(priceVal);
       if (parsed === null) {
-        alert('Wprowadź prawidłową stawkę (liczba >= 0).');
+        await showAlert('Wprowadź prawidłową stawkę (liczba >= 0).');
         return;
       }
 

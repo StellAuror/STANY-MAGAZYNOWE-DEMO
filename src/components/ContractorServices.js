@@ -1,4 +1,4 @@
-import { el } from '../utils/dom.js';
+import { el, showPrompt, showMultiPrompt, showConfirm } from '../utils/dom.js';
 import {
   getContractors, getServiceDefinitions, getContractorServices,
   getServicePrices, getContractorById, getPalletTypes, getPalletPrices,
@@ -39,29 +39,32 @@ export function ContractorServices() {
   // Add Contractor button
   const addContractorBtn = el('button', {
     className: 'btn-primary btn-small',
-    onClick: () => {
-      const name = prompt('Nazwa nowego kontrahenta:');
+    onClick: async () => {
+      const name = await showPrompt('Nazwa nowego kontrahenta:');
       if (name && name.trim()) {
         addContractor(name.trim());
       }
     },
   }, '+ Kontrahent');
   selectorDiv.appendChild(addContractorBtn);
-  
+
   // Add Custom Service button
   const addServiceBtn = el('button', {
     className: 'btn-secondary btn-small',
     onClick: async () => {
-      const name = prompt('Nazwa nowej usługi:');
-      if (!name || !name.trim()) return;
-      
-      const unit = prompt('Jednostka miary (np. PALLET, KM, HOUR, PIECE):', 'PIECE');
-      if (!unit || !unit.trim()) return;
-      
-      const description = prompt('Opis (opcjonalnie):') || '';
-      
-      const newService = await addServiceDefinition(name.trim(), unit.trim().toUpperCase(), description.trim());
-      
+      const result = await showMultiPrompt('Nowa usługa', [
+        { label: 'Nazwa usługi', key: 'name', required: true, placeholder: 'np. Transport' },
+        { label: 'Jednostka miary', key: 'unit', defaultValue: 'PIECE', placeholder: 'PALLET, KM, HOUR, PIECE' },
+        { label: 'Opis (opcjonalnie)', key: 'description', placeholder: 'Krótki opis...' },
+      ]);
+      if (!result) return;
+
+      const newService = await addServiceDefinition(
+        result.name.trim(),
+        result.unit.trim().toUpperCase(),
+        (result.description || '').trim()
+      );
+
       // Auto-enable for current contractor if one is selected
       if (selectedId && newService) {
         await enableServiceForContractor(selectedId, newService.id);
@@ -124,7 +127,8 @@ export function ContractorServices() {
       const deleteBtn = el('button', {
         className: 'btn-danger btn-small',
         onClick: async () => {
-          if (confirm(`Czy na pewno usunąć usługę "${def.name}" dla tego kontrahenta?`)) {
+          const confirmed = await showConfirm(`Czy na pewno usunąć usługę „${def.name}" dla tego kontrahenta?`);
+          if (confirmed) {
             await removeContractorService(selectedId, def.id);
           }
         },

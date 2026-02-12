@@ -1,8 +1,8 @@
 import { getState } from '../store/store.js';
-import { getEnabledServices, getContractorById } from '../store/selectors.js';
+import { getEnabledServices, getContractorById, getContractors } from '../store/selectors.js';
 import { getDaysInMonth } from '../utils/date.js';
 import { pricingService } from './pricingService.js';
-import { sumEntries } from './inventoryService.js';
+import { sumEntries, calculateTotalStock } from './inventoryService.js';
 
 /**
  * Generate monthly summary for given filters.
@@ -136,4 +136,197 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
   }
 
   return data;
+}
+
+/**
+ * Get TOP 5 contractors by total revenue with breakdown.
+ * Categories: movement (pallets in/out), additional services, storage.
+ * @param {string} month - "YYYY-MM"
+ * @param {string} warehouseId - 'all' or specific warehouse ID
+ */
+export function getTop5ByRevenue(month, warehouseId) {
+  const days = getDaysInMonth(month);
+  const state = getState();
+  const allContractors = getContractors();
+  const warehouses = state.warehouses;
+
+  const results = [];
+
+  for (const contractor of allContractors) {
+    let movementRevenue = 0;
+    let additionalRevenue = 0;
+    let storageRevenue = 0;
+
+    for (const day of days) {
+      const dayRecords = state.dailyInventory.filter(r => {
+        if (r.contractorId !== contractor.id || r.date !== day) return false;
+        if (warehouseId !== 'all' && r.warehouseId !== warehouseId) return false;
+        return true;
+      });
+
+      // Track which warehouses have movement this day
+      const warehousesWithMovement = new Set();
+
+      for (const rec of dayRecords) {
+        if (!rec.services) continue;
+
+        let hasMovement = false;
+
+        for (const svc of rec.services) {
+          if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
+            // Movement revenue
+            if (svc.palletEntries) {
+              const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
+              for (const pe of svc.palletEntries) {
+                const qty = pe.qty || 0;
+                if (qty > 0) {
+                  hasMovement = true;
+                  const palletPrice = pricingService.getPalletPriceAtDate(contractor.id, pe.palletTypeId, direction, day);
+                  const fallbackPrice = pricingService.getPriceAtDate(contractor.id, svc.serviceId, day);
+                  const price = palletPrice > 0 ? palletPrice : fallbackPrice;
+                  movementRevenue += qty * price;
+                }
+              }
+            }
+          } else if (svc.serviceId !== 'svc-storage') {
+            // Additional services
+            const qty = svc.qty || 0;
+            if (qty > 0) {
+              const price = pricingService.getPriceAtDate(contractor.id, svc.serviceId, day);
+              additionalRevenue += qty * price;
+            }
+          }
+        }
+
+        if (hasMovement) {
+          warehousesWithMovement.add(rec.warehouseId);
+        }
+      }
+
+      // Storage revenue: charge per pallet per day for warehouses WITHOUT movement
+      const whList = warehouseId !== 'all' ? [warehouseId] : warehouses.map(w => w.id);
+      for (const whId of whList) {
+        if (warehousesWithMovement.has(whId)) continue;
+        // Check if contractor has stock in this warehouse
+        const stock = calculateTotalStock(contractor.id, whId, day);
+        if (stock > 0) {
+          const storagePrice = pricingService.getPriceAtDate(contractor.id, 'svc-storage', day);
+          storageRevenue += stock * storagePrice;
+        }
+      }
+    }
+
+    const totalRevenue = movementRevenue + additionalRevenue + storageRevenue;
+
+    results.push({
+      contractorId: contractor.id,
+      contractorName: contractor.name,
+      movementRevenue: Math.round(movementRevenue * 100) / 100,
+      additionalRevenue: Math.round(additionalRevenue * 100) / 100,
+      storageRevenue: Math.round(storageRevenue * 100) / 100,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+    });
+  }
+
+  // Sort descending by total revenue
+  results.sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+  return results.slice(0, 5);
+}
+
+/**
+ * Get TOP 5 contractors by Month-over-Month growth (%).
+ * @param {string} month - "YYYY-MM" (current month)
+ * @param {string} warehouseId - 'all' or specific warehouse ID
+ */
+export function getTop5MoMGrowth(month, warehouseId) {
+  const allContractors = getContractors();
+
+  // Calculate previous month string
+  const [y, m] = month.split('-').map(Number);
+  const prevDate = new Date(y, m - 2, 1); // month is 1-based, Date month is 0-based
+  const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+  /**
+   * Calculate total revenue for a contractor in a given month.
+   */
+  function calcMonthRevenue(contractorId, monthStr) {
+    const days = getDaysInMonth(monthStr);
+    const state = getState();
+    let revenue = 0;
+
+    for (const day of days) {
+      const dayRecords = state.dailyInventory.filter(r => {
+        if (r.contractorId !== contractorId || r.date !== day) return false;
+        if (warehouseId !== 'all' && r.warehouseId !== warehouseId) return false;
+        return true;
+      });
+
+      for (const rec of dayRecords) {
+        if (!rec.services) continue;
+        for (const svc of rec.services) {
+          if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
+            if (svc.palletEntries) {
+              const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
+              for (const pe of svc.palletEntries) {
+                const qty = pe.qty || 0;
+                if (qty > 0) {
+                  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, direction, day);
+                  const fallbackPrice = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
+                  const price = palletPrice > 0 ? palletPrice : fallbackPrice;
+                  revenue += qty * price;
+                }
+              }
+            }
+          } else if (svc.serviceId !== 'svc-storage') {
+            const qty = svc.qty || 0;
+            if (qty > 0) {
+              const price = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
+              revenue += qty * price;
+            }
+          }
+        }
+      }
+    }
+
+    return Math.round(revenue * 100) / 100;
+  }
+
+  const results = [];
+
+  for (const contractor of allContractors) {
+    const currentRevenue = calcMonthRevenue(contractor.id, month);
+    const previousRevenue = calcMonthRevenue(contractor.id, prevMonth);
+
+    let momPercent = null;
+    let isNew = false;
+
+    if (previousRevenue === 0 && currentRevenue > 0) {
+      momPercent = Infinity;
+      isNew = true;
+    } else if (previousRevenue === 0 && currentRevenue === 0) {
+      momPercent = 0;
+    } else {
+      momPercent = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    }
+
+    results.push({
+      contractorId: contractor.id,
+      contractorName: contractor.name,
+      currentRevenue,
+      previousRevenue,
+      momPercent: momPercent === Infinity ? Infinity : Math.round(momPercent * 10) / 10,
+      isNew,
+    });
+  }
+
+  // Sort descending by MoM % (Infinity = new clients first)
+  results.sort((a, b) => {
+    if (a.momPercent === Infinity && b.momPercent === Infinity) return b.currentRevenue - a.currentRevenue;
+    if (a.momPercent === Infinity) return -1;
+    if (b.momPercent === Infinity) return 1;
+    return b.momPercent - a.momPercent;
+  });
+
+  return results.slice(0, 5);
 }

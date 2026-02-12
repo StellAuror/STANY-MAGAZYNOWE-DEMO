@@ -1,16 +1,17 @@
 import { getDailyRecord, getDailyRecordsUpTo } from '../store/selectors.js';
 import { saveDailyRecord } from '../store/actions.js';
 import { generateId } from '../utils/format.js';
-import { today } from '../utils/date.js';
+import { today, parseISODate } from '../utils/date.js';
 import { auditService } from './auditService.js';
 import { pricingService } from './pricingService.js';
 
 /**
- * Calculate total stock for contractor in warehouse up to today.
- * Stan calkowity = suma wejść - wyjść for all days up to today.
+ * Calculate total stock for contractor in warehouse up to a given date.
+ * Stan calkowity = suma wejść - wyjść for all days up to the specified date.
+ * @param {string} [date] - ISO date string "YYYY-MM-DD". Defaults to today.
  */
-export function calculateTotalStock(contractorId, warehouseId) {
-  const records = getDailyRecordsUpTo(contractorId, warehouseId, today());
+export function calculateTotalStock(contractorId, warehouseId, date) {
+  const records = getDailyRecordsUpTo(contractorId, warehouseId, date || today());
   let total = 0;
   for (const r of records) {
     // Sum pallets from services
@@ -245,10 +246,13 @@ export function calculateDayRevenue(contractorId, warehouseId, date) {
   
   for (const svc of record.services) {
     if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
-      const price = pricingService.getPriceAtDate(contractorId, svc.serviceId, date);
-      // Sum all pallet entries
+      const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
+      const fallbackPrice = pricingService.getPriceAtDate(contractorId, svc.serviceId, date);
+      // Sum all pallet entries using per-type pricing when available
       if (svc.palletEntries) {
         svc.palletEntries.forEach(entry => {
+          const palletPrice = pricingService.getPalletPriceAtDate(contractorId, entry.palletTypeId, direction, date);
+          const price = palletPrice > 0 ? palletPrice : fallbackPrice;
           revenue += (entry.qty || 0) * price;
         });
       }
@@ -259,26 +263,43 @@ export function calculateDayRevenue(contractorId, warehouseId, date) {
 }
 
 /**
- * Calculate revenue from storage (when no movement - charged for stock on warehouse).
- * Returns revenue from svc-storage service.
+ * Calculate revenue from storage (charged daily for stock on warehouse).
+ * Charged when there are NO pallet movements for the day.
+ * If no record exists for the day, it means no movements — storage is charged.
  */
 export function calculateStorageRevenue(contractorId, warehouseId, date) {
   const record = getDailyRecord(contractorId, warehouseId, date);
-  if (!record) return 0;
-  
-  // Check if there are any movements
-  const hasMovement = record.services && record.services.some(s => 
-    (s.serviceId === 'svc-pallets-in' || s.serviceId === 'svc-pallets-out') && s.qty > 0
-  );
-  
-  if (hasMovement) return 0; // If there are movements, no storage charge
-  
-  // Calculate storage charge based on current stock
-  const stock = calculateTotalStock(contractorId, warehouseId);
+
+  // Check if there are any pallet movements this day
+  let hasMovement = false;
+  if (record && record.services) {
+    hasMovement = record.services.some(s =>
+      (s.serviceId === 'svc-pallets-in' || s.serviceId === 'svc-pallets-out') &&
+      s.palletEntries && s.palletEntries.some(entry => (entry.qty || 0) > 0)
+    );
+  }
+
+  // If there are movements, no storage charge
+  if (hasMovement) return 0;
+
+  // Calculate storage charge based on stock up to this date
+  const records = getDailyRecordsUpTo(contractorId, warehouseId, date);
+  let stock = 0;
+  for (const r of records) {
+    if (r.services) {
+      r.services.forEach(svc => {
+        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
+          svc.palletEntries.forEach(entry => { stock += entry.qty || 0; });
+        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
+          svc.palletEntries.forEach(entry => { stock -= entry.qty || 0; });
+        }
+      });
+    }
+  }
+
   if (stock <= 0) return 0;
-  
+
   const price = pricingService.getPriceAtDate(contractorId, 'svc-storage', date);
-  
   return stock * price;
 }
 
@@ -329,10 +350,14 @@ export function calculateAverage30DayStock(contractorId, warehouseId, date) {
     // Calculate change for this day
     if (record.services) {
       for (const svc of record.services) {
-        if (svc.serviceId === 'svc-pallets-in') {
-          runningStock += svc.qty || 0;
-        } else if (svc.serviceId === 'svc-pallets-out') {
-          runningStock -= svc.qty || 0;
+        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
+          svc.palletEntries.forEach(entry => {
+            runningStock += entry.qty || 0;
+          });
+        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
+          svc.palletEntries.forEach(entry => {
+            runningStock -= entry.qty || 0;
+          });
         }
       }
     }
@@ -356,4 +381,93 @@ export function calculateAverage30DayStock(contractorId, warehouseId, date) {
   }
   
   return daysCount > 0 ? totalStock / daysCount : 0;
+}
+
+/**
+ * Calculate stock trend by comparing two 15-day periods.
+ * Returns { direction: 'up'|'down'|'stable', percentChange: number }
+ */
+export function calculateStockTrend(contractorId, warehouseId, date) {
+  const dateObj = parseISODate(date);
+
+  // Current period: last 15 days
+  const mid = new Date(dateObj.getTime() - 15 * 24 * 60 * 60 * 1000);
+  const start = new Date(dateObj.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const allRecords = getDailyRecordsUpTo(contractorId, warehouseId, date);
+  const sortedRecords = [...allRecords].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Build cumulative stock map
+  let runningStock = 0;
+  const stockByDate = new Map();
+  for (const record of sortedRecords) {
+    if (record.services) {
+      for (const svc of record.services) {
+        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
+          svc.palletEntries.forEach(e => { runningStock += e.qty || 0; });
+        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
+          svc.palletEntries.forEach(e => { runningStock -= e.qty || 0; });
+        }
+      }
+    }
+    stockByDate.set(record.date, runningStock);
+  }
+
+  function avgForPeriod(from, to) {
+    let total = 0, count = 0;
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const dayStr = d.toISOString().slice(0, 10);
+      let stockAtDate = 0;
+      for (const [rd, stock] of stockByDate.entries()) {
+        if (rd <= dayStr) stockAtDate = stock;
+      }
+      total += stockAtDate;
+      count++;
+    }
+    return count > 0 ? total / count : 0;
+  }
+
+  const prevAvg = avgForPeriod(start, mid);
+  const currAvg = avgForPeriod(new Date(mid.getTime() + 24 * 60 * 60 * 1000), dateObj);
+
+  let percentChange = 0;
+  if (prevAvg !== 0) {
+    percentChange = ((currAvg - prevAvg) / Math.abs(prevAvg)) * 100;
+  } else if (currAvg > 0) {
+    percentChange = 100;
+  }
+
+  const threshold = 2; // % threshold for "stable"
+  let direction = 'stable';
+  if (percentChange > threshold) direction = 'up';
+  else if (percentChange < -threshold) direction = 'down';
+
+  return { direction, percentChange: Math.round(percentChange * 10) / 10 };
+}
+
+/**
+ * Get info about when data was first entered for a given day.
+ * Checks deadline: next day at 12:00.
+ * Returns null if no record, or { onTime, createdAt, hoursOver? }
+ */
+export function getFirstEntryInfo(contractorId, warehouseId, date) {
+  const record = getDailyRecord(contractorId, warehouseId, date);
+  if (!record) return null;
+
+  const createdAt = record.createdAt;
+  if (!createdAt) return { onTime: true, createdAt: null };
+
+  // Deadline: next day at 12:00
+  const dateObj = parseISODate(date);
+  const deadlineDate = new Date(dateObj);
+  deadlineDate.setDate(deadlineDate.getDate() + 1);
+  deadlineDate.setHours(12, 0, 0, 0);
+  const deadlineTs = deadlineDate.getTime();
+
+  if (createdAt <= deadlineTs) {
+    return { onTime: true, createdAt };
+  } else {
+    const hoursOver = Math.ceil((createdAt - deadlineTs) / 3600000);
+    return { onTime: false, createdAt, hoursOver };
+  }
 }

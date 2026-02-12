@@ -4,13 +4,13 @@ import {
 } from '../store/selectors.js';
 import { setSelectedMonth, setSummaryContractors, setSummaryWarehouse } from '../store/actions.js';
 import { getState } from '../store/store.js';
-import { getMonthlySummary, getDailyChartData } from '../services/summaryService.js';
+import { getMonthlySummary, getDailyChartData, getTop5ByRevenue, getTop5MoMGrowth } from '../services/summaryService.js';
 import { formatCurrency, formatUnit } from '../utils/format.js';
 import { getMonthLabel } from '../utils/date.js';
-import { LineChartCanvas } from './LineChartCanvas.js';
+import { BarChartCanvas } from './LineChartCanvas.js';
 
 /**
- * View 3: Monthly summary with filters, table, and chart.
+ * View 3: Monthly summary with bar chart on top, filters, table, and TOP5 sections.
  */
 export function MonthlySummary() {
   const contractors = getContractors();
@@ -19,10 +19,9 @@ export function MonthlySummary() {
 
   const wrapper = el('div');
 
-  // Filters bar
+  // === TOP FILTERS BAR (month + warehouse) ===
   const filtersBar = el('div', { className: 'settings-bar' });
 
-  // Month picker
   filtersBar.appendChild(el('label', {}, 'Miesiąc:'));
   const monthInput = el('input', {
     type: 'month',
@@ -31,7 +30,6 @@ export function MonthlySummary() {
   });
   filtersBar.appendChild(monthInput);
 
-  // Warehouse filter
   filtersBar.appendChild(el('label', {}, 'Magazyn:'));
   const whSelect = el('select', {
     onChange: (e) => setSummaryWarehouse(e.target.value),
@@ -48,13 +46,107 @@ export function MonthlySummary() {
 
   wrapper.appendChild(filtersBar);
 
-  // Contractor multi-select
-  const contractorFilter = el('div', { className: 'settings-bar' });
+  // === BAR CHART (on top, shows all selected contractors) ===
+  const selectedIds = filters.contractorIds.length > 0
+    ? filters.contractorIds
+    : contractors.map(c => c.id);
+
+  const chartData = getDailyChartData(filters.month, selectedIds, filters.warehouseId);
+  const chart = BarChartCanvas({
+    data: chartData,
+    title: `Przychód dzienny — ${getMonthLabel(filters.month)}`,
+  });
+  wrapper.appendChild(el('div', { className: 'mt-md' }, chart));
+
+  // === TOP5 SECTIONS ===
+  const top5Revenue = getTop5ByRevenue(filters.month, filters.warehouseId);
+  const top5MoM = getTop5MoMGrowth(filters.month, filters.warehouseId);
+
+  const top5Section = el('div', { className: 'top5-grid mt-md' });
+
+  // TOP5 by Revenue
+  const revenueCard = el('div', { className: 'top5-card' });
+  revenueCard.appendChild(el('div', { className: 'top5-card__title' }, 'TOP 5 — Przychody'));
+
+  const revTable = el('table', { className: 'summary-table' });
+  const revThead = el('thead');
+  const revHeaderRow = el('tr');
+  revHeaderRow.appendChild(el('th', {}, '#'));
+  revHeaderRow.appendChild(el('th', {}, 'Kontrahent'));
+  revHeaderRow.appendChild(el('th', { className: 'text-right' }, 'Ruchy mag.'));
+  revHeaderRow.appendChild(el('th', { className: 'text-right' }, 'Usługi dod.'));
+  revHeaderRow.appendChild(el('th', { className: 'text-right' }, 'Stan mag.'));
+  revHeaderRow.appendChild(el('th', { className: 'text-right' }, 'SUMA'));
+  revThead.appendChild(revHeaderRow);
+  revTable.appendChild(revThead);
+
+  const revTbody = el('tbody');
+  for (let i = 0; i < top5Revenue.length; i++) {
+    const item = top5Revenue[i];
+    const row = el('tr');
+    row.appendChild(el('td', {}, el('span', { className: 'rank-badge' }, String(i + 1))));
+    row.appendChild(el('td', { className: 'font-semibold' }, item.contractorName));
+    row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(item.movementRevenue)));
+    row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(item.additionalRevenue)));
+    row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(item.storageRevenue)));
+    row.appendChild(el('td', { className: 'cell-number font-semibold' }, formatCurrency(item.totalRevenue)));
+    revTbody.appendChild(row);
+  }
+  revTable.appendChild(revTbody);
+  revenueCard.appendChild(revTable);
+  top5Section.appendChild(revenueCard);
+
+  // TOP5 by MoM Growth
+  const momCard = el('div', { className: 'top5-card' });
+  momCard.appendChild(el('div', { className: 'top5-card__title' }, 'TOP 5 — Wzrost MoM'));
+
+  const momTable = el('table', { className: 'summary-table' });
+  const momThead = el('thead');
+  const momHeaderRow = el('tr');
+  momHeaderRow.appendChild(el('th', {}, '#'));
+  momHeaderRow.appendChild(el('th', {}, 'Kontrahent'));
+  momHeaderRow.appendChild(el('th', { className: 'text-right' }, 'Poprz. mies.'));
+  momHeaderRow.appendChild(el('th', { className: 'text-right' }, 'Bież. mies.'));
+  momHeaderRow.appendChild(el('th', { className: 'text-right' }, 'MoM %'));
+  momThead.appendChild(momHeaderRow);
+  momTable.appendChild(momThead);
+
+  const momTbody = el('tbody');
+  for (let i = 0; i < top5MoM.length; i++) {
+    const item = top5MoM[i];
+    const row = el('tr');
+    row.appendChild(el('td', {}, el('span', { className: 'rank-badge' }, String(i + 1))));
+    row.appendChild(el('td', { className: 'font-semibold' }, item.contractorName));
+    row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(item.previousRevenue)));
+    row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(item.currentRevenue)));
+
+    // MoM badge
+    let momContent;
+    if (item.isNew) {
+      momContent = el('span', { className: 'mom-new' }, 'NOWY');
+    } else {
+      const momClass = item.momPercent > 0 ? 'mom-positive' : item.momPercent < 0 ? 'mom-negative' : '';
+      const prefix = item.momPercent > 0 ? '+' : '';
+      momContent = el('span', { className: momClass }, `${prefix}${item.momPercent}%`);
+    }
+    const momCell = el('td', { className: 'cell-number' });
+    momCell.appendChild(momContent);
+    row.appendChild(momCell);
+
+    momTbody.appendChild(row);
+  }
+  momTable.appendChild(momTbody);
+  momCard.appendChild(momTable);
+  top5Section.appendChild(momCard);
+
+  wrapper.appendChild(top5Section);
+
+  // === CONTRACTOR MULTI-SELECT ===
+  const contractorFilter = el('div', { className: 'settings-bar mt-md' });
   contractorFilter.appendChild(el('label', {}, 'Kontrahenci:'));
 
   const checkboxesContainer = el('div', { className: 'flex gap-sm', style: { flexWrap: 'wrap' } });
 
-  // Select all button
   const selectAllBtn = el('button', {
     className: 'btn-secondary btn-small',
     onClick: () => {
@@ -92,17 +184,15 @@ export function MonthlySummary() {
   contractorFilter.appendChild(checkboxesContainer);
   wrapper.appendChild(contractorFilter);
 
-  // Results
+  // === SUMMARY TABLE (bottom) ===
   if (filters.contractorIds.length === 0) {
     wrapper.appendChild(el('p', { className: 'text-secondary text-center mt-lg' },
-      'Wybierz co najmniej jednego kontrahenta, aby wyświetlić podsumowanie.'));
+      'Wybierz co najmniej jednego kontrahenta, aby wyświetlić szczegółowe podsumowanie.'));
     return wrapper;
   }
 
-  // Get summary data
   const summaryData = getMonthlySummary(filters.month, filters.contractorIds, filters.warehouseId);
 
-  // Summary table
   const tableSection = el('div', { className: 'mt-md' });
   const table = el('table', { className: 'summary-table' });
 
@@ -159,14 +249,6 @@ export function MonthlySummary() {
   table.appendChild(tbody);
   tableSection.appendChild(table);
   wrapper.appendChild(tableSection);
-
-  // Chart
-  const chartData = getDailyChartData(filters.month, filters.contractorIds, filters.warehouseId);
-  const chart = LineChartCanvas({
-    data: chartData,
-    title: `Przychód dzienny — ${getMonthLabel(filters.month)}`,
-  });
-  wrapper.appendChild(el('div', { className: 'mt-md' }, chart));
 
   return wrapper;
 }

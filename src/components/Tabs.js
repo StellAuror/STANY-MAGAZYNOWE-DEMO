@@ -7,6 +7,7 @@ const TAB_DEFINITIONS = [
   { id: 'contractor', label: 'Kontrahent' },
   { id: 'pallets', label: 'Rodzaje palet' },
   { id: 'summary', label: 'Podsumowanie' },
+  { id: 'audit', label: 'Audit Log' },
 ];
 
 // Warehouse colors for header bar
