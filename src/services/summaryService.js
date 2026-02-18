@@ -2,7 +2,7 @@ import { getState } from '../store/store.js';
 import { getEnabledServices, getContractorById, getContractors } from '../store/selectors.js';
 import { getDaysInMonth } from '../utils/date.js';
 import { pricingService } from './pricingService.js';
-import { sumEntries, calculateTotalStock } from './inventoryService.js';
+import { sumEntries, calculateTotalStock, calculateStockByPalletType } from './inventoryService.js';
 
 /**
  * Generate monthly summary for given filters.
@@ -113,16 +113,25 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
         for (const svc of rec.services) {
           if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
             if (svc.palletEntries) {
-              const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
               for (const pe of svc.palletEntries) {
                 const qty = pe.qty || 0;
                 if (qty > 0) {
                   hasMovement = true;
-                  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, direction, day);
+                  // Movement price always uses 'in' slot
+                  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, 'in', day);
                   const fallbackPrice = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
                   const price = palletPrice > 0 ? palletPrice : fallbackPrice;
                   dayRevenue += qty * price;
                 }
+              }
+            }
+          } else if (svc.serviceId === 'svc-pallets-correction') {
+            // Corrections: manual price stored per entry
+            if (svc.palletEntries) {
+              for (const pe of svc.palletEntries) {
+                const qty = pe.qty || 0;
+                const manualPrice = pe.manualPrice || 0;
+                if (qty !== 0) dayRevenue += Math.abs(qty) * manualPrice;
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {
@@ -138,14 +147,16 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
         if (hasMovement) warehousesWithMovement.add(rec.warehouseId);
       }
 
-      // Storage revenue for warehouses without movement that day
+      // Storage revenue per pallet type — uses 'out' price slot
       const whList = warehouseId !== 'all' ? [warehouseId] : warehouses.map(w => w.id);
       for (const whId of whList) {
         if (warehousesWithMovement.has(whId)) continue;
-        const stock = calculateTotalStock(contractorId, whId, day);
-        if (stock > 0) {
-          const storagePrice = pricingService.getPriceAtDate(contractorId, 'svc-storage', day);
-          dayRevenue += stock * storagePrice;
+        const stockMap = calculateStockByPalletType(contractorId, whId, day);
+        for (const [ptId, qty] of stockMap) {
+          if (qty <= 0) continue;
+          const storagePrice = pricingService.getPalletPriceAtDate(contractorId, ptId, 'out', day)
+            || pricingService.getPriceAtDate(contractorId, 'svc-storage', day);
+          dayRevenue += qty * storagePrice;
         }
       }
     }
@@ -197,18 +208,26 @@ export function getTop5ByRevenue(month, warehouseId) {
 
         for (const svc of rec.services) {
           if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
-            // Movement revenue
+            // Movement revenue — always uses 'in' price slot
             if (svc.palletEntries) {
-              const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
               for (const pe of svc.palletEntries) {
                 const qty = pe.qty || 0;
                 if (qty > 0) {
                   hasMovement = true;
-                  const palletPrice = pricingService.getPalletPriceAtDate(contractor.id, pe.palletTypeId, direction, day);
+                  const palletPrice = pricingService.getPalletPriceAtDate(contractor.id, pe.palletTypeId, 'in', day);
                   const fallbackPrice = pricingService.getPriceAtDate(contractor.id, svc.serviceId, day);
                   const price = palletPrice > 0 ? palletPrice : fallbackPrice;
                   movementRevenue += qty * price;
                 }
+              }
+            }
+          } else if (svc.serviceId === 'svc-pallets-correction') {
+            // Corrections: manual price per entry
+            if (svc.palletEntries) {
+              for (const pe of svc.palletEntries) {
+                const qty = pe.qty || 0;
+                const manualPrice = pe.manualPrice || 0;
+                if (qty !== 0) movementRevenue += Math.abs(qty) * manualPrice;
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {
@@ -226,15 +245,16 @@ export function getTop5ByRevenue(month, warehouseId) {
         }
       }
 
-      // Storage revenue: charge per pallet per day for warehouses WITHOUT movement
+      // Storage revenue per pallet type — uses 'out' price slot
       const whList = warehouseId !== 'all' ? [warehouseId] : warehouses.map(w => w.id);
       for (const whId of whList) {
         if (warehousesWithMovement.has(whId)) continue;
-        // Check if contractor has stock in this warehouse
-        const stock = calculateTotalStock(contractor.id, whId, day);
-        if (stock > 0) {
-          const storagePrice = pricingService.getPriceAtDate(contractor.id, 'svc-storage', day);
-          storageRevenue += stock * storagePrice;
+        const stockMap = calculateStockByPalletType(contractor.id, whId, day);
+        for (const [ptId, qty] of stockMap) {
+          if (qty <= 0) continue;
+          const storagePrice = pricingService.getPalletPriceAtDate(contractor.id, ptId, 'out', day)
+            || pricingService.getPriceAtDate(contractor.id, 'svc-storage', day);
+          storageRevenue += qty * storagePrice;
         }
       }
     }
@@ -285,17 +305,16 @@ export function getContractorDailyReport(month, contractorId, warehouseId) {
       for (const svc of rec.services) {
         if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
           if (svc.palletEntries) {
-            const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
             const label = svc.serviceId === 'svc-pallets-in' ? 'Wejście palet' : 'Wyjście palet';
             for (const pe of svc.palletEntries) {
               const qty = pe.qty || 0;
               if (qty > 0) {
                 hasMovement = true;
-                const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, direction, day);
+                // Movement always uses 'in' price slot
+                const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, 'in', day);
                 const fallbackPrice = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
                 const price = palletPrice > 0 ? palletPrice : fallbackPrice;
                 const total = Math.round(qty * price * 100) / 100;
-                // Find pallet type name
                 const pt = state.palletTypes?.find(p => p.id === pe.palletTypeId);
                 lines.push({
                   category: 'Ruchy magazynowe',
@@ -308,12 +327,31 @@ export function getContractorDailyReport(month, contractorId, warehouseId) {
               }
             }
           }
+        } else if (svc.serviceId === 'svc-pallets-correction') {
+          // Corrections with manual price
+          if (svc.palletEntries) {
+            for (const pe of svc.palletEntries) {
+              const qty = pe.qty || 0;
+              const manualPrice = pe.manualPrice || 0;
+              if (qty !== 0) {
+                const total = Math.round(Math.abs(qty) * manualPrice * 100) / 100;
+                const pt = state.palletTypes?.find(p => p.id === pe.palletTypeId);
+                lines.push({
+                  category: 'Ruchy magazynowe',
+                  name: `Korekta${pt ? ' — ' + pt.name : ''}`,
+                  qty,
+                  unit: 'szt',
+                  price: manualPrice,
+                  total,
+                });
+              }
+            }
+          }
         } else if (svc.serviceId !== 'svc-storage') {
           const qty = svc.qty || 0;
           if (qty > 0) {
             const price = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
             const total = Math.round(qty * price * 100) / 100;
-            // Find service definition name
             const enabledSvc = getEnabledServices(contractorId).find(s => s.serviceId === svc.serviceId);
             const name = enabledSvc?.definition?.name || svc.serviceId;
             const isTransport = /transport/i.test(name);
@@ -332,18 +370,21 @@ export function getContractorDailyReport(month, contractorId, warehouseId) {
       if (hasMovement) warehousesWithMovement.add(rec.warehouseId);
     }
 
-    // Storage
+    // Storage per pallet type — uses 'out' price slot
     const whList = warehouseId !== 'all' ? [warehouseId] : warehouses.map(w => w.id);
     for (const whId of whList) {
       if (warehousesWithMovement.has(whId)) continue;
-      const stock = calculateTotalStock(contractorId, whId, day);
-      if (stock > 0) {
-        const storagePrice = pricingService.getPriceAtDate(contractorId, 'svc-storage', day);
-        const total = Math.round(stock * storagePrice * 100) / 100;
+      const stockMap = calculateStockByPalletType(contractorId, whId, day);
+      for (const [ptId, qty] of stockMap) {
+        if (qty <= 0) continue;
+        const storagePrice = pricingService.getPalletPriceAtDate(contractorId, ptId, 'out', day)
+          || pricingService.getPriceAtDate(contractorId, 'svc-storage', day);
+        const total = Math.round(qty * storagePrice * 100) / 100;
+        const pt = state.palletTypes?.find(p => p.id === ptId);
         lines.push({
           category: 'Stan magazynowy',
-          name: 'Magazynowanie palet',
-          qty: stock,
+          name: `Magazynowanie${pt ? ' — ' + pt.name : ''}`,
+          qty,
           unit: 'szt',
           price: storagePrice,
           total,
@@ -391,15 +432,23 @@ export function getTop5MoMGrowth(month, warehouseId) {
         for (const svc of rec.services) {
           if (svc.serviceId === 'svc-pallets-in' || svc.serviceId === 'svc-pallets-out') {
             if (svc.palletEntries) {
-              const direction = svc.serviceId === 'svc-pallets-in' ? 'in' : 'out';
               for (const pe of svc.palletEntries) {
                 const qty = pe.qty || 0;
                 if (qty > 0) {
-                  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, direction, day);
+                  // Movement always uses 'in' price slot
+                  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, pe.palletTypeId, 'in', day);
                   const fallbackPrice = pricingService.getPriceAtDate(contractorId, svc.serviceId, day);
                   const price = palletPrice > 0 ? palletPrice : fallbackPrice;
                   revenue += qty * price;
                 }
+              }
+            }
+          } else if (svc.serviceId === 'svc-pallets-correction') {
+            if (svc.palletEntries) {
+              for (const pe of svc.palletEntries) {
+                const qty = pe.qty || 0;
+                const manualPrice = pe.manualPrice || 0;
+                if (qty !== 0) revenue += Math.abs(qty) * manualPrice;
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {

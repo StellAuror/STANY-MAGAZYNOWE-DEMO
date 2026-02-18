@@ -14,22 +14,19 @@ export function calculateTotalStock(contractorId, warehouseId, date) {
   const records = getDailyRecordsUpTo(contractorId, warehouseId, date || today());
   let total = 0;
   for (const r of records) {
-    // Sum pallets from services
     if (r.services) {
       r.services.forEach(svc => {
         if (svc.serviceId === 'svc-pallets-in') {
-          // Sum all pallet entries
           if (svc.palletEntries) {
-            svc.palletEntries.forEach(entry => {
-              total += entry.qty || 0;
-            });
+            svc.palletEntries.forEach(entry => { total += entry.qty || 0; });
           }
         } else if (svc.serviceId === 'svc-pallets-out') {
-          // Subtract all pallet entries
           if (svc.palletEntries) {
-            svc.palletEntries.forEach(entry => {
-              total -= entry.qty || 0;
-            });
+            svc.palletEntries.forEach(entry => { total -= entry.qty || 0; });
+          }
+        } else if (svc.serviceId === 'svc-pallets-correction') {
+          if (svc.palletEntries) {
+            svc.palletEntries.forEach(entry => { total += entry.qty || 0; });
           }
         }
       });
@@ -58,6 +55,11 @@ export function calculateStockByPalletType(contractorId, warehouseId, upToDate) 
           svc.palletEntries.forEach(entry => {
             const current = stockMap.get(entry.palletTypeId) || 0;
             stockMap.set(entry.palletTypeId, current - (entry.qty || 0));
+          });
+        } else if (svc.serviceId === 'svc-pallets-correction' && svc.palletEntries) {
+          svc.palletEntries.forEach(entry => {
+            const current = stockMap.get(entry.palletTypeId) || 0;
+            stockMap.set(entry.palletTypeId, current + (entry.qty || 0));
           });
         }
       });

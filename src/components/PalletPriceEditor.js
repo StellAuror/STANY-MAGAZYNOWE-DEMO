@@ -22,8 +22,8 @@ export function PalletPriceEditor() {
   const userName = getCurrentUser();
   const prices = getPalletPrices(contractorId, palletTypeId, direction);
 
-  const directionLabel = direction === 'in' ? 'WEJŚCIA' : 'WYJŚCIA';
-  const directionColor = direction === 'in' ? '#059669' : '#dc2626';
+  const directionLabel = direction === 'in' ? 'RUCHY (wejścia + wyjścia)' : 'MAGAZYNOWANIE';
+  const directionColor = direction === 'in' ? '#059669' : '#7c3aed';
 
   // Overlay
   const overlay = el('div', {

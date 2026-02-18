@@ -158,8 +158,9 @@ export function ContractorServices() {
     return cs?.isEnabled || false;
   });
 
-  const transportDefs = enabledDefs.filter(def => /transport/i.test(def.name));
-  const vasyDefs = enabledDefs.filter(def => !/transport/i.test(def.name));
+  const PALLET_SERVICE_IDS = ['svc-pallets-in', 'svc-pallets-out', 'svc-pallets-correction', 'svc-storage'];
+  const transportDefs = enabledDefs.filter(def => /transport/i.test(def.name) && !PALLET_SERVICE_IDS.includes(def.id));
+  const vasyDefs = enabledDefs.filter(def => !/transport/i.test(def.name) && !PALLET_SERVICE_IDS.includes(def.id));
 
   if (transportDefs.length > 0) {
     const section = el('div', { className: 'section mt-md' });
@@ -313,19 +314,17 @@ export function ContractorServices() {
       const priceInBtn = el('button', {
         className: 'btn-secondary btn-small',
         onClick: () => {
-          // Open price editor for pallet type IN
           openPalletPriceEditor(selectedId, palletType.id, 'in');
         },
-      }, 'Cennik WEJ');
+      }, 'Cennik ruchów');
       buttonGroup.appendChild(priceInBtn);
       
       const priceOutBtn = el('button', {
         className: 'btn-secondary btn-small',
         onClick: () => {
-          // Open price editor for pallet type OUT
           openPalletPriceEditor(selectedId, palletType.id, 'out');
         },
-      }, 'Cennik WYJ');
+      }, 'Cennik magazynowania');
       buttonGroup.appendChild(priceOutBtn);
     }
     
@@ -340,10 +339,10 @@ export function ContractorServices() {
       if (pricesIn.length > 0 || pricesOut.length > 0) {
         const priceHistory = el('div', { className: 'price-history' });
         
-        // IN prices
+        // IN prices (ruchy)
         if (pricesIn.length > 0) {
           const inLabel = el('div', { style: { fontWeight: '600', fontSize: '0.75rem', marginLeft: '26px', marginTop: '4px', color: '#059669' } });
-          inLabel.textContent = 'WEJŚCIA:';
+          inLabel.textContent = 'RUCHY (wejścia + wyjścia):';
           priceHistory.appendChild(inLabel);
           
           for (const p of pricesIn) {
@@ -354,16 +353,16 @@ export function ContractorServices() {
           }
         }
         
-        // OUT prices
+        // OUT prices (magazynowanie)
         if (pricesOut.length > 0) {
-          const outLabel = el('div', { style: { fontWeight: '600', fontSize: '0.75rem', marginLeft: '26px', marginTop: '8px', color: '#dc2626' } });
-          outLabel.textContent = 'WYJŚCIA:';
+          const outLabel = el('div', { style: { fontWeight: '600', fontSize: '0.75rem', marginLeft: '26px', marginTop: '8px', color: '#7c3aed' } });
+          outLabel.textContent = 'MAGAZYNOWANIE:';
           priceHistory.appendChild(outLabel);
           
           for (const p of pricesOut) {
             const row = el('div', { className: 'price-history__row' });
             row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
-            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/szt`));
+            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/szt/dzień`));
             priceHistory.appendChild(row);
           }
         }
@@ -373,7 +372,7 @@ export function ContractorServices() {
         item.appendChild(el('p', {
           className: 'text-secondary',
           style: { fontSize: '0.8rem', marginLeft: '26px' },
-        }, 'Brak zdefiniowanych stawek. Kliknij "Cennik WEJ" lub "Cennik WYJ", aby dodać.'));
+        }, 'Brak zdefiniowanych stawek. Kliknij "Cennik ruchów" lub "Cennik magazynowania", aby dodać.'));
       }
     }
 

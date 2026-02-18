@@ -25,7 +25,7 @@ export function InventoryModal() {
   const palletTypes = getPalletTypes();
 
   // Local state: 
-  // - For pallets: map of palletTypeId -> { qtyIn, qtyOut, noteIn, noteOut }
+  // - For pallets: map of palletTypeId -> { qtyIn, qtyOut, qtyCorr, noteIn, noteOut, noteCorr, corrPrice }
   // - For other services: map of serviceId -> { qty, note }
   const palletData = {};
   const servicesData = {};
@@ -33,7 +33,7 @@ export function InventoryModal() {
   // Initialize pallet data
   const acceptedPalletTypes = contractor?.acceptedPalletTypes || [];
   acceptedPalletTypes.forEach(palletTypeId => {
-    palletData[palletTypeId] = { qtyIn: 0, qtyOut: 0, noteIn: '', noteOut: '' };
+    palletData[palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
   });
   
   // Load existing data
@@ -42,7 +42,7 @@ export function InventoryModal() {
       if (s.serviceId === 'svc-pallets-in' && s.palletEntries) {
         s.palletEntries.forEach(entry => {
           if (!palletData[entry.palletTypeId]) {
-            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, noteIn: '', noteOut: '' };
+            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
           }
           palletData[entry.palletTypeId].qtyIn = entry.qty || 0;
           palletData[entry.palletTypeId].noteIn = entry.note || '';
@@ -50,12 +50,21 @@ export function InventoryModal() {
       } else if (s.serviceId === 'svc-pallets-out' && s.palletEntries) {
         s.palletEntries.forEach(entry => {
           if (!palletData[entry.palletTypeId]) {
-            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, noteIn: '', noteOut: '' };
+            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
           }
           palletData[entry.palletTypeId].qtyOut = entry.qty || 0;
           palletData[entry.palletTypeId].noteOut = entry.note || '';
         });
-      } else if (s.serviceId !== 'svc-pallets-in' && s.serviceId !== 'svc-pallets-out') {
+      } else if (s.serviceId === 'svc-pallets-correction' && s.palletEntries) {
+        s.palletEntries.forEach(entry => {
+          if (!palletData[entry.palletTypeId]) {
+            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
+          }
+          palletData[entry.palletTypeId].qtyCorr = entry.qty || 0;
+          palletData[entry.palletTypeId].noteCorr = entry.note || '';
+          palletData[entry.palletTypeId].corrPrice = entry.manualPrice || 0;
+        });
+      } else if (s.serviceId !== 'svc-pallets-in' && s.serviceId !== 'svc-pallets-out' && s.serviceId !== 'svc-pallets-correction') {
         servicesData[s.serviceId] = { qty: s.qty || 0, note: s.note || '' };
       }
     });
@@ -122,6 +131,8 @@ export function InventoryModal() {
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--label' }, 'Typ palety'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Wejścia'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Wyjścia'));
+      headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Korekta'));
+      headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Cena kor.'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Różnica'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Stan'));
       palletsTable.appendChild(headerRow);
@@ -157,7 +168,6 @@ export function InventoryModal() {
           className: 'pallets-table__input',
           onInput: (e) => {
             palletData[palletTypeId].qtyIn = parseQty(e.target.value) ?? 0;
-            // Update difference and stock
             updatePalletRow(palletTypeId);
           },
         });
@@ -174,16 +184,50 @@ export function InventoryModal() {
           className: 'pallets-table__input',
           onInput: (e) => {
             palletData[palletTypeId].qtyOut = parseQty(e.target.value) ?? 0;
-            // Update difference and stock
             updatePalletRow(palletTypeId);
           },
         });
         outCell.appendChild(outInput);
         row.appendChild(outCell);
+
+        // Korekta input (may be negative)
+        const corrCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
+        const corrInput = el('input', {
+          type: 'number',
+          step: '1',
+          value: String(data.qtyCorr),
+          placeholder: '0',
+          className: 'pallets-table__input',
+          style: { background: '#fefce8', borderColor: '#d97706' },
+          onInput: (e) => {
+            palletData[palletTypeId].qtyCorr = parseQty(e.target.value) ?? 0;
+            updatePalletRow(palletTypeId);
+          },
+        });
+        corrCell.appendChild(corrInput);
+        row.appendChild(corrCell);
+
+        // Cena korekty input
+        const corrPriceCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
+        const corrPriceInput = el('input', {
+          type: 'number',
+          min: '0',
+          step: '0.01',
+          value: String(data.corrPrice),
+          placeholder: '0.00',
+          className: 'pallets-table__input',
+          style: { background: '#fefce8', borderColor: '#d97706', width: '72px' },
+          onInput: (e) => {
+            palletData[palletTypeId].corrPrice = parseFloat(e.target.value) || 0;
+          },
+        });
+        corrPriceCell.appendChild(corrPriceInput);
+        corrPriceCell.appendChild(el('span', { style: { fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginLeft: '2px' } }, 'zł'));
+        row.appendChild(corrPriceCell);
         
-        // Różnica (calculated)
+        // Różnica (calculated: in - out + corr)
         const diffCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
-        const diff = data.qtyIn - data.qtyOut;
+        const diff = data.qtyIn - data.qtyOut + data.qtyCorr;
         const diffDisplay = el('span', { 
           className: 'pallets-table__value',
           style: { 
@@ -214,7 +258,7 @@ export function InventoryModal() {
       // Helper function to update calculated cells
       function updatePalletRow(palletTypeId) {
         const data = palletData[palletTypeId];
-        const diff = data.qtyIn - data.qtyOut;
+        const diff = data.qtyIn - data.qtyOut + data.qtyCorr;
         const previousStock = stockByType.get(palletTypeId) || 0;
         const newStock = previousStock + diff;
         
@@ -378,6 +422,25 @@ export function InventoryModal() {
           services.push({
             serviceId: 'svc-pallets-out',
             palletEntries: entriesOut,
+          });
+        }
+
+        // Corrections
+        const entriesCorr = [];
+        for (const [palletTypeId, data] of Object.entries(palletData)) {
+          if (data.qtyCorr !== 0 || data.noteCorr) {
+            entriesCorr.push({
+              palletTypeId,
+              qty: data.qtyCorr,
+              note: data.noteCorr,
+              manualPrice: data.corrPrice,
+            });
+          }
+        }
+        if (entriesCorr.length > 0) {
+          services.push({
+            serviceId: 'svc-pallets-correction',
+            palletEntries: entriesCorr,
           });
         }
       }
