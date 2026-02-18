@@ -5,6 +5,7 @@ import { PalletTypesManager } from './components/PalletTypesManager.js';
 import { MonthlySummary } from './components/MonthlySummary.js';
 import { AuditLogViewer } from './components/AuditLogViewer.js';
 import { WarehousesManager } from './components/WarehousesManager.js';
+import { KpiTable } from './components/KpiTable.js';
 
 /**
  * Returns the component for the active tab.
@@ -16,6 +17,8 @@ export function getActiveView() {
   switch (tab) {
     case 'inventory':
       return ContractorsTable();
+    case 'kpi':
+      return KpiTable();
     case 'contractor':
       return ContractorServices();
     case 'pallets':

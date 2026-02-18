@@ -203,7 +203,7 @@ function doRender() {
     const calendar = InlineCalendar(selectedDate, (newDate) => {
       setSelectedDate(newDate);
     });
-    if (activeTab !== 'inventory') {
+    if (activeTab !== 'inventory' && activeTab !== 'kpi') {
       calendar.style.visibility = 'hidden';
     }
     calendarSlot.appendChild(calendar);
@@ -245,16 +245,16 @@ function doRender() {
     
     sidebarEl.appendChild(userBar);
 
-    // Header: title + warehouse switch with warehouse color (only for inventory view)
+    // Header: title + warehouse switch with warehouse color (for inventory and kpi views)
     clearElement(headerEl);
-    const headerColor = activeTab === 'inventory' ? getWarehouseHeaderColor(warehouseId) : '#374151';
+    const headerColor = (activeTab === 'inventory' || activeTab === 'kpi') ? getWarehouseHeaderColor(warehouseId) : '#374151';
     headerEl.style.backgroundColor = headerColor;
 
     // Title
     headerEl.appendChild(el('h1', { className: 'header-title' }, 'System Magazynowy'));
 
-    // Warehouse switch - only visible in inventory tab
-    if (activeTab === 'inventory') {
+    // Warehouse switch - visible in inventory and kpi tabs
+    if (activeTab === 'inventory' || activeTab === 'kpi') {
       headerEl.appendChild(WarehouseSwitch());
     } else {
       // Add spacer to maintain header height

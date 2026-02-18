@@ -8,7 +8,7 @@ import { addPalletType, updatePalletType, deletePalletType } from '../store/acti
 export function PalletTypesManager() {
   const { palletTypes } = getState();
 
-  const container = el('div', { className: 'view-container' });
+  const container = el('div', { className: 'view-container view-container--full' });
 
   // Header
   const header = el('div', { className: 'view-header flex items-center justify-between' });

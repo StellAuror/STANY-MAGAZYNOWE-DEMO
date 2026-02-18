@@ -4,6 +4,7 @@ import { setActiveTab } from '../store/actions.js';
 
 const TAB_DEFINITIONS = [
   { id: 'inventory', label: 'Stany magazynowe' },
+  { id: 'kpi', label: 'KPI' },
   { id: 'contractor', label: 'Kontrahent' },
   { id: 'pallets', label: 'Rodzaje palet' },
   { id: 'summary', label: 'Podsumowanie' },

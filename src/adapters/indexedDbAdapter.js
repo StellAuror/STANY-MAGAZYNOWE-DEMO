@@ -1,7 +1,7 @@
 import { STORES } from './dataAdapter.js';
 
 const DB_NAME = 'MAGAZYN_DB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 /** @type {IDBDatabase|null} */
 let db = null;
@@ -71,6 +71,26 @@ function openDb() {
       // Settings
       if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
         database.createObjectStore(STORES.SETTINGS, { keyPath: 'key' });
+      }
+
+      // KPI definitions (global catalog)
+      if (!database.objectStoreNames.contains(STORES.KPI_DEFINITIONS)) {
+        database.createObjectStore(STORES.KPI_DEFINITIONS, { keyPath: 'id' });
+      }
+
+      // Warehouse-KPI assignments (which KPIs are active for a warehouse)
+      if (!database.objectStoreNames.contains(STORES.WAREHOUSE_KPIS)) {
+        const wk = database.createObjectStore(STORES.WAREHOUSE_KPIS, { keyPath: 'id' });
+        wk.createIndex('byWarehouse', 'warehouseId', { unique: false });
+        wk.createIndex('byKpi', 'kpiId', { unique: false });
+      }
+
+      // Daily KPI values
+      if (!database.objectStoreNames.contains(STORES.KPI_VALUES)) {
+        const kv = database.createObjectStore(STORES.KPI_VALUES, { keyPath: 'id' });
+        kv.createIndex('byWarehouseKpiDate', ['warehouseId', 'kpiId', 'date'], { unique: false });
+        kv.createIndex('byWarehouse', 'warehouseId', { unique: false });
+        kv.createIndex('byDate', 'date', { unique: false });
       }
     };
 

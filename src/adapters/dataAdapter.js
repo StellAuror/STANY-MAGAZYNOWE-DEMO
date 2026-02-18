@@ -27,4 +27,7 @@ export const STORES = {
   PALLET_TYPES: 'palletTypes',
   AUDIT_LOG: 'auditLog',
   SETTINGS: 'settings',
+  KPI_DEFINITIONS: 'kpiDefinitions',
+  WAREHOUSE_KPIS: 'warehouseKpis',
+  KPI_VALUES: 'kpiValues',
 };

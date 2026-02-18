@@ -218,3 +218,54 @@ export function getWarehouseById(id) {
 export function getServiceDefinitionById(id) {
   return getState().serviceDefinitions.find(s => s.id === id) || null;
 }
+
+// --- KPI Selectors ---
+
+/** Get all KPI definitions sorted by name */
+export function getKpiDefinitions() {
+  return [...getState().kpiDefinitions].sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+}
+
+/** Get KPI definition by ID */
+export function getKpiDefinitionById(id) {
+  return getState().kpiDefinitions.find(k => k.id === id) || null;
+}
+
+/** Get KPI assignments for a warehouse */
+export function getWarehouseKpis(warehouseId) {
+  return getState().warehouseKpis.filter(wk => wk.warehouseId === warehouseId);
+}
+
+/** Get active KPI definitions for a warehouse (with definition objects) */
+export function getActiveKpisForWarehouse(warehouseId) {
+  const assignments = getWarehouseKpis(warehouseId);
+  const state = getState();
+  const defs = state.kpiDefinitions;
+  const contractors = state.contractors;
+  return assignments
+    .map(wk => ({
+      ...wk,
+      definition: defs.find(d => d.id === wk.kpiId),
+    }))
+    .filter(wk => wk.definition)
+    .map(wk => {
+      const def = wk.definition;
+      // backward compat: support old contractorId (single) and new contractorIds (array)
+      const ids = Array.isArray(def.contractorIds) ? def.contractorIds
+        : (def.contractorId ? [def.contractorId] : []);
+      return {
+        ...wk,
+        contractors: ids
+          .map(id => contractors.find(c => c.id === id))
+          .filter(Boolean),
+      };
+    })
+    .sort((a, b) => a.definition.name.localeCompare(b.definition.name, 'pl'));
+}
+
+/** Get KPI value for warehouse+kpi+date */
+export function getKpiValue(warehouseId, kpiId, date) {
+  return getState().kpiValues.find(
+    v => v.warehouseId === warehouseId && v.kpiId === kpiId && v.date === date
+  ) || null;
+}

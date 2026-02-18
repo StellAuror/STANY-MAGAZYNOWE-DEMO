@@ -116,7 +116,8 @@ export function closePalletPriceEditor() {
 
 export async function loadAllData() {
   const [warehouses, contractors, serviceDefinitions, contractorServices,
-    servicePrices, palletPrices, dailyInventory, palletTypes, auditLog] = await Promise.all([
+    servicePrices, palletPrices, dailyInventory, palletTypes, auditLog,
+    kpiDefinitions, warehouseKpis, kpiValues] = await Promise.all([
     adapter.getAll(STORES.WAREHOUSES),
     adapter.getAll(STORES.CONTRACTORS),
     adapter.getAll(STORES.SERVICE_DEFINITIONS),
@@ -126,6 +127,9 @@ export async function loadAllData() {
     adapter.getAll(STORES.DAILY_INVENTORY),
     adapter.getAll(STORES.PALLET_TYPES),
     adapter.getAll(STORES.AUDIT_LOG),
+    adapter.getAll(STORES.KPI_DEFINITIONS),
+    adapter.getAll(STORES.WAREHOUSE_KPIS),
+    adapter.getAll(STORES.KPI_VALUES),
   ]);
 
   // Migration: Add acceptedPalletTypes to contractors that don't have it
@@ -156,6 +160,9 @@ export async function loadAllData() {
     dailyInventory,
     palletTypes,
     auditLog,
+    kpiDefinitions,
+    warehouseKpis,
+    kpiValues,
     currentUser: settings?.value || 'Użytkownik',
     activeWarehouseId: warehouses.length > 0 ? warehouses.sort((a, b) => a.sortOrder - b.sortOrder)[0].id : null,
   });
@@ -757,6 +764,83 @@ export async function updateServiceDefinition(id, updates) {
   setState({ serviceDefinitions });
 }
 
+// --- KPI Definition Actions ---
+
+export async function addKpiDefinition(name, responsible, description) {
+  const kpiDef = { id: generateId(), name, responsible, description, createdAt: Date.now() };
+  await adapter.put(STORES.KPI_DEFINITIONS, kpiDef);
+  setState({ kpiDefinitions: [...getState().kpiDefinitions, kpiDef] });
+  return kpiDef;
+}
+
+export async function updateKpiDefinition(id, updates) {
+  const kpiDefinitions = getState().kpiDefinitions.map(k =>
+    k.id === id ? { ...k, ...updates, updatedAt: Date.now() } : k
+  );
+  const updated = kpiDefinitions.find(k => k.id === id);
+  await adapter.put(STORES.KPI_DEFINITIONS, updated);
+  setState({ kpiDefinitions });
+}
+
+export async function deleteKpiDefinition(id) {
+  await adapter.delete(STORES.KPI_DEFINITIONS, id);
+  setState({ kpiDefinitions: getState().kpiDefinitions.filter(k => k.id !== id) });
+  // Also remove all warehouse assignments for this KPI
+  const assignmentsToRemove = getState().warehouseKpis.filter(wk => wk.kpiId === id);
+  for (const wk of assignmentsToRemove) {
+    await adapter.delete(STORES.WAREHOUSE_KPIS, wk.id);
+  }
+  setState({ warehouseKpis: getState().warehouseKpis.filter(wk => wk.kpiId !== id) });
+  // Also remove all stored values for this KPI
+  const valuesToRemove = getState().kpiValues.filter(v => v.kpiId === id);
+  for (const v of valuesToRemove) {
+    await adapter.delete(STORES.KPI_VALUES, v.id);
+  }
+  setState({ kpiValues: getState().kpiValues.filter(v => v.kpiId !== id) });
+}
+
+// --- Warehouse KPI Assignment Actions ---
+
+export async function assignKpiToWarehouse(warehouseId, kpiId) {
+  const existing = getState().warehouseKpis.find(
+    wk => wk.warehouseId === warehouseId && wk.kpiId === kpiId
+  );
+  if (existing) return existing;
+  const wk = { id: generateId(), warehouseId, kpiId };
+  await adapter.put(STORES.WAREHOUSE_KPIS, wk);
+  setState({ warehouseKpis: [...getState().warehouseKpis, wk] });
+  return wk;
+}
+
+export async function unassignKpiFromWarehouse(warehouseId, kpiId) {
+  const existing = getState().warehouseKpis.find(
+    wk => wk.warehouseId === warehouseId && wk.kpiId === kpiId
+  );
+  if (!existing) return;
+  await adapter.delete(STORES.WAREHOUSE_KPIS, existing.id);
+  setState({ warehouseKpis: getState().warehouseKpis.filter(wk => wk.id !== existing.id) });
+}
+
+// --- KPI Value Actions ---
+
+export async function saveKpiValue(warehouseId, kpiId, date, value) {
+  const state = getState();
+  const existing = state.kpiValues.find(
+    v => v.warehouseId === warehouseId && v.kpiId === kpiId && v.date === date
+  );
+  if (existing) {
+    const updated = { ...existing, value, updatedAt: Date.now() };
+    await adapter.put(STORES.KPI_VALUES, updated);
+    setState({
+      kpiValues: state.kpiValues.map(v => v.id === existing.id ? updated : v),
+    });
+  } else {
+    const record = { id: generateId(), warehouseId, kpiId, date, value, createdAt: Date.now() };
+    await adapter.put(STORES.KPI_VALUES, record);
+    setState({ kpiValues: [...state.kpiValues, record] });
+  }
+}
+
 // --- Database Reset ---
 
 export async function clearAllDataAndReseed() {
@@ -784,6 +868,9 @@ export async function clearAllDataAndReseed() {
     dailyInventory: [],
     palletTypes: [],
     auditLog: [],
+    kpiDefinitions: [],
+    warehouseKpis: [],
+    kpiValues: [],
   });
   
   // Reload all data (will seed initial data because contractors.length === 0)

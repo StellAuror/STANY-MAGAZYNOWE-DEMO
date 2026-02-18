@@ -15,6 +15,9 @@ const state = {
   dailyInventory: [],
   palletTypes: [],
   auditLog: [],
+  kpiDefinitions: [],
+  warehouseKpis: [],
+  kpiValues: [],
 
   // UI state
   activeWarehouseId: null,
