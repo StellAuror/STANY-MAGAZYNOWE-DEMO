@@ -199,6 +199,11 @@ export function getSummaryFilters() {
   };
 }
 
+/** Get selected contractor for detailed report */
+export function getSummaryReportContractorId() {
+  return getState().selectedSummaryReportContractor || null;
+}
+
 /** Find contractor by ID */
 export function getContractorById(id) {
   return getState().contractors.find(c => c.id === id) || null;

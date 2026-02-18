@@ -24,6 +24,7 @@ const state = {
   selectedMonth: today().slice(0, 7),
   selectedSummaryContractors: [], // array of IDs
   selectedSummaryWarehouse: 'all', // 'all' or warehouseId
+  selectedSummaryReportContractor: null, // single contractor ID for detailed report
   currentUser: 'Użytkownik',
 
   // Modal state

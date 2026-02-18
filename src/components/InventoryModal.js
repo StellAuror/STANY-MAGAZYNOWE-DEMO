@@ -236,52 +236,69 @@ export function InventoryModal() {
     body.appendChild(palletsSection);
   }
 
-  // Other services section
-  const otherServices = enabledServices.filter(svc => 
+  // Other services section — split into TRANSPORT and VASY
+  const otherServices = enabledServices.filter(svc =>
     svc.serviceId !== 'svc-pallets-in' && svc.serviceId !== 'svc-pallets-out'
   );
-  
-  if (otherServices.length > 0) {
-    const servicesSection = el('div', { className: 'section' });
-    servicesSection.appendChild(el('div', { className: 'section__title' }, 'USŁUGI DODATKOWE'));
-    
-    const servicesContainer = el('div', { className: 'services-grid' });
-    
-    otherServices.forEach(svc => {
-      // For other services: simple qty + note
-        const serviceRow = el('div', { className: 'service-entry-row' });
-        
-        // Service name label
-        const nameLabel = el('label', { className: 'service-entry-label' }, svc.definition.name);
-        serviceRow.appendChild(nameLabel);
-        
-        // Qty input
-        const qtyInput = el('input', {
-          type: 'number',
-          min: '0',
-          step: '1',
-          value: String(servicesData[svc.serviceId].qty),
-          placeholder: 'Ilość',
-          className: 'service-entry-input',
-          onInput: (e) => { servicesData[svc.serviceId].qty = parseQty(e.target.value) ?? 0; },
-        });
-        serviceRow.appendChild(qtyInput);
-        
-        // Note input
-        const noteInput = el('input', {
-          type: 'text',
-          value: servicesData[svc.serviceId].note,
-          placeholder: 'Notatka (opcjonalnie)',
-          className: 'service-entry-input',
-          onInput: (e) => { servicesData[svc.serviceId].note = e.target.value; },
-        });
-        serviceRow.appendChild(noteInput);
-        
-      servicesContainer.appendChild(serviceRow);
+
+  const isTransport = (svc) => /transport/i.test(svc.definition.name);
+
+  const buildServiceRows = (services, container) => {
+    services.forEach(svc => {
+      const serviceRow = el('div', { className: 'service-entry-row' });
+
+      const nameLabel = el('label', { className: 'service-entry-label' }, svc.definition.name);
+      serviceRow.appendChild(nameLabel);
+
+      const qtyInput = el('input', {
+        type: 'number',
+        min: '0',
+        step: '1',
+        value: String(servicesData[svc.serviceId].qty),
+        placeholder: 'Ilość',
+        className: 'service-entry-input',
+        onInput: (e) => { servicesData[svc.serviceId].qty = parseQty(e.target.value) ?? 0; },
+      });
+      serviceRow.appendChild(qtyInput);
+
+      const noteInput = el('input', {
+        type: 'text',
+        value: servicesData[svc.serviceId].note,
+        placeholder: 'Notatka (opcjonalnie)',
+        className: 'service-entry-input',
+        onInput: (e) => { servicesData[svc.serviceId].note = e.target.value; },
+      });
+      serviceRow.appendChild(noteInput);
+
+      container.appendChild(serviceRow);
     });
-    
-    servicesSection.appendChild(servicesContainer);
-    body.appendChild(servicesSection);
+  };
+
+  const transportServices = otherServices.filter(isTransport);
+  const vasyServices = otherServices.filter(svc => !isTransport(svc));
+
+  if (transportServices.length > 0) {
+    const transportSection = el('div', { className: 'section' });
+    const transportTitle = el('div', { className: 'section__title' });
+    transportTitle.textContent = 'TRANSPORT';
+    transportTitle.style.color = '#2563eb';
+    transportSection.appendChild(transportTitle);
+    const transportContainer = el('div', { className: 'services-grid' });
+    buildServiceRows(transportServices, transportContainer);
+    transportSection.appendChild(transportContainer);
+    body.appendChild(transportSection);
+  }
+
+  if (vasyServices.length > 0) {
+    const vasySection = el('div', { className: 'section' });
+    const vasyTitle = el('div', { className: 'section__title' });
+    vasyTitle.textContent = 'VASY';
+    vasyTitle.style.color = '#7c3aed';
+    vasySection.appendChild(vasyTitle);
+    const vasyContainer = el('div', { className: 'services-grid' });
+    buildServiceRows(vasyServices, vasyContainer);
+    vasySection.appendChild(vasyContainer);
+    body.appendChild(vasySection);
   }
 
   // -- History section --

@@ -40,6 +40,10 @@ export function setSummaryWarehouse(warehouseId) {
   setState({ selectedSummaryWarehouse: warehouseId });
 }
 
+export function setSummaryReportContractor(contractorId) {
+  setState({ selectedSummaryReportContractor: contractorId });
+}
+
 export async function setCurrentUser(name) {
   setState({ currentUser: name });
   await adapter.put(STORES.SETTINGS, { key: 'currentUser', value: name });

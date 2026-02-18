@@ -84,84 +84,102 @@ export function ContractorServices() {
   const contractor = getContractorById(selectedId);
   if (!contractor) return wrapper;
 
-  // Services list
-  const servicesSection = el('div', { className: 'section mt-md' });
-  servicesSection.appendChild(el('div', { className: 'section__title' }, 'Usługi'));
+  // Helper: build a service-list block for a given set of service definitions
+  const buildServiceList = (defs) => {
+    const list = el('div', {
+      className: 'service-list',
+      style: { background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' },
+    });
 
-  const servicesList = el('div', {
-    className: 'service-list',
-    style: { background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' },
-  });
+    for (const def of defs) {
+      const prices = getServicePrices(selectedId, def.id);
 
-  for (const def of serviceDefs) {
-    const contractorSvc = state.contractorServices.find(
+      const item = el('div', { className: 'service-list__item', style: { flexDirection: 'column', alignItems: 'stretch', gap: '10px' } });
+
+      // Top row: name + unit + buttons
+      const topRow = el('div', { className: 'flex items-center justify-between' });
+
+      const nameContainer = el('div', { className: 'flex items-center gap-sm' });
+      nameContainer.appendChild(el('span', { className: 'service-list__name' }, def.name));
+      nameContainer.appendChild(el('span', { className: 'service-list__unit' }, formatUnit(def.unit)));
+      topRow.appendChild(nameContainer);
+
+      const buttonGroup = el('div', { className: 'flex gap-sm' });
+
+      const priceBtn = el('button', {
+        className: 'btn-secondary btn-small',
+        onClick: () => openPriceEditor(selectedId, def.id),
+      }, 'Cennik');
+      buttonGroup.appendChild(priceBtn);
+
+      if (!['svc-pallets-in', 'svc-pallets-out'].includes(def.id)) {
+        const deleteBtn = el('button', {
+          className: 'btn-danger btn-small',
+          onClick: async () => {
+            const confirmed = await showConfirm(`Czy na pewno usunąć usługę „${def.name}" dla tego kontrahenta?`);
+            if (confirmed) {
+              await removeContractorService(selectedId, def.id);
+            }
+          },
+        }, 'Usuń');
+        buttonGroup.appendChild(deleteBtn);
+      }
+
+      topRow.appendChild(buttonGroup);
+      item.appendChild(topRow);
+
+      if (prices.length > 0) {
+        const priceHistory = el('div', { className: 'price-history' });
+        for (const p of prices) {
+          const row = el('div', { className: 'price-history__row' });
+          row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
+          row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/${formatUnit(def.unit)}`));
+          priceHistory.appendChild(row);
+        }
+        item.appendChild(priceHistory);
+      } else {
+        item.appendChild(el('p', {
+          className: 'text-secondary',
+          style: { fontSize: '0.8rem', marginLeft: '26px' },
+        }, 'Brak zdefiniowanych stawek. Kliknij "Cennik", aby dodać.'));
+      }
+
+      list.appendChild(item);
+    }
+
+    return list;
+  };
+
+  // Split enabled services into Transport and VASY
+  const enabledDefs = serviceDefs.filter(def => {
+    const cs = state.contractorServices.find(
       cs => cs.contractorId === selectedId && cs.serviceId === def.id
     );
-    const isEnabled = contractorSvc?.isEnabled || false;
-    
-    // Skip disabled services
-    if (!isEnabled) continue;
-    
-    const prices = getServicePrices(selectedId, def.id);
+    return cs?.isEnabled || false;
+  });
 
-    const item = el('div', { className: 'service-list__item', style: { flexDirection: 'column', alignItems: 'stretch', gap: '10px' } });
+  const transportDefs = enabledDefs.filter(def => /transport/i.test(def.name));
+  const vasyDefs = enabledDefs.filter(def => !/transport/i.test(def.name));
 
-    // Top row: name + unit + buttons
-    const topRow = el('div', { className: 'flex items-center justify-between' });
-
-    const nameContainer = el('div', { className: 'flex items-center gap-sm' });
-    nameContainer.appendChild(el('span', { className: 'service-list__name' }, def.name));
-    nameContainer.appendChild(el('span', { className: 'service-list__unit' }, formatUnit(def.unit)));
-    topRow.appendChild(nameContainer);
-
-    const buttonGroup = el('div', { className: 'flex gap-sm' });
-    
-    const priceBtn = el('button', {
-      className: 'btn-secondary btn-small',
-      onClick: () => openPriceEditor(selectedId, def.id),
-    }, 'Cennik');
-    buttonGroup.appendChild(priceBtn);
-    
-    // Only allow deletion for non-essential services
-    if (!['svc-pallets-in', 'svc-pallets-out'].includes(def.id)) {
-      const deleteBtn = el('button', {
-        className: 'btn-danger btn-small',
-        onClick: async () => {
-          const confirmed = await showConfirm(`Czy na pewno usunąć usługę „${def.name}" dla tego kontrahenta?`);
-          if (confirmed) {
-            await removeContractorService(selectedId, def.id);
-          }
-        },
-      }, 'Usuń');
-      buttonGroup.appendChild(deleteBtn);
-    }
-    
-    topRow.appendChild(buttonGroup);
-
-    item.appendChild(topRow);
-
-    // Price history (if has prices)
-    if (prices.length > 0) {
-      const priceHistory = el('div', { className: 'price-history' });
-      for (const p of prices) {
-        const row = el('div', { className: 'price-history__row' });
-        row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
-        row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/${formatUnit(def.unit)}`));
-        priceHistory.appendChild(row);
-      }
-      item.appendChild(priceHistory);
-    } else if (prices.length === 0) {
-      item.appendChild(el('p', {
-        className: 'text-secondary',
-        style: { fontSize: '0.8rem', marginLeft: '26px' },
-      }, 'Brak zdefiniowanych stawek. Kliknij "Cennik", aby dodać.'));
-    }
-
-    servicesList.appendChild(item);
+  if (transportDefs.length > 0) {
+    const section = el('div', { className: 'section mt-md' });
+    const title = el('div', { className: 'section__title' });
+    title.textContent = 'Transport';
+    title.style.color = '#2563eb';
+    section.appendChild(title);
+    section.appendChild(buildServiceList(transportDefs));
+    wrapper.appendChild(section);
   }
 
-  servicesSection.appendChild(servicesList);
-  wrapper.appendChild(servicesSection);
+  if (vasyDefs.length > 0) {
+    const section = el('div', { className: 'section mt-md' });
+    const title = el('div', { className: 'section__title' });
+    title.textContent = 'VASY';
+    title.style.color = '#7c3aed';
+    section.appendChild(title);
+    section.appendChild(buildServiceList(vasyDefs));
+    wrapper.appendChild(section);
+  }
 
   // Pallet types section
   const palletTypes = getPalletTypes();

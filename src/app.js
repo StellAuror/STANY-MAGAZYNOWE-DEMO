@@ -187,20 +187,24 @@ function doRender() {
     // Sidebar: navigation tabs + user bar at bottom
     clearElement(sidebarEl);
     
-    const navContainer = el('div', { className: 'sidebar-nav-container' });
-
-    // Calendar in sidebar (on top) — only for inventory tab
+    // Calendar slot — always rendered to prevent layout shift
     const state = getState();
     const activeTab = state.activeTab || 'inventory';
-    if (activeTab === 'inventory') {
-      const selectedDate = getSelectedDate();
-      const calendar = InlineCalendar(selectedDate, (newDate) => {
-        setSelectedDate(newDate);
-      });
-      navContainer.appendChild(calendar);
-    }
 
-    // Navigation tabs below calendar
+    const calendarSlot = el('div', { className: 'sidebar-calendar-slot' });
+    const selectedDate = getSelectedDate();
+    const calendar = InlineCalendar(selectedDate, (newDate) => {
+      setSelectedDate(newDate);
+    });
+    if (activeTab !== 'inventory') {
+      calendar.style.visibility = 'hidden';
+    }
+    calendarSlot.appendChild(calendar);
+    sidebarEl.appendChild(calendarSlot);
+
+    const navContainer = el('div', { className: 'sidebar-nav-container' });
+
+    // Navigation tabs
     navContainer.appendChild(Tabs());
 
     sidebarEl.appendChild(navContainer);
