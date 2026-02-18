@@ -337,6 +337,74 @@
   background: var(--color-surface);
 }
 
+/* ── Date-confirmation warning banner ─────────────────────── */
+.modal-date-warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 20px 0 20px;
+  padding: 12px 14px;
+  background: #fff8e1;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.modal-date-warning__icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+.modal-date-warning__msg {
+  flex: 1;
+}
+
+.modal-date-warning__row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.modal-date-warning__input {
+  width: 150px;
+  padding: 6px 10px;
+  border: 1.5px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #fffdf5;
+  color: #1f2937;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.modal-date-warning__input:focus {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(245,158,11,.2);
+}
+
+.modal-date-warning__input--ok {
+  border-color: #16a34a !important;
+  background: #f0fdf4;
+}
+
+.modal-date-warning__input--err {
+  border-color: #dc2626 !important;
+  background: #fff1f2;
+}
+
+.btn-primary:disabled,
+.btn-primary[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* ──────────────────────────────────────────────────────────── */
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1285,3 +1353,132 @@
   font-size: 1rem;
 }
 
+/* ================================================
+   Generic view layout (view-container, view-header)
+   ================================================ */
+.view-container {
+  max-width: 860px;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.view-header h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.view-note {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+  max-width: 680px;
+}
+
+/* Alias for btn-small */
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
+/* Report subsection (Transport vs. Pozostałe) */
+.report-subsection {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.report-subsection__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.report-subsection__badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* Report mode switcher (segment control) */
+.report-mode-switcher {
+  display: inline-flex;
+  background: var(--color-pill-bg);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.report-mode-switcher__btn {
+  padding: 7px 22px;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+  white-space: nowrap;
+}
+
+.report-mode-switcher__btn:hover:not(.report-mode-switcher__btn--active) {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.report-mode-switcher__btn--active {
+  background: var(--color-surface);
+  color: var(--accent, var(--color-primary));
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+}
+
+/* Export bar inside report content pane */
+.report-export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.report-content-pane {
+  min-height: 60px;
+}
+
+/* Warehouses manager */
+.warehouse-row td {
+  vertical-align: middle;
+}
+
+.warehouse-name-text {
+  font-size: 1rem;
+}
+
+.warehouse-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.warehouse-actions .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}

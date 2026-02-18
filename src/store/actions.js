@@ -1,6 +1,7 @@
 import { getState, setState } from './store.js';
 import { STORES } from '../adapters/dataAdapter.js';
 import { generateId } from '../utils/format.js';
+import { today } from '../utils/date.js';
 
 /** @type {import('../adapters/indexedDbAdapter.js').default} */
 let adapter = null;
@@ -52,6 +53,14 @@ export async function setCurrentUser(name) {
 // --- Modal Actions ---
 
 export function openInventoryModal(contractorId, warehouseId, date) {
+  // Block entering data for future dates
+  const todayStr = today();
+  if (date > todayStr) {
+    import('../utils/dom.js').then(({ showAlert }) => {
+      showAlert('Nie można wprowadzać danych dla przyszłych dat.');
+    });
+    return;
+  }
   setState({
     modalOpen: true,
     modalContractorId: contractorId,
@@ -301,6 +310,42 @@ export async function updatePalletPrice(id, updates) {
   setState({ palletPrices: prices });
 }
 
+// --- Warehouse Actions ---
+
+export async function addWarehouse(name) {
+  const warehouses = getState().warehouses;
+  const maxOrder = warehouses.reduce((max, w) => Math.max(max, w.sortOrder || 0), 0);
+  const warehouse = {
+    id: generateId(),
+    name,
+    sortOrder: maxOrder + 1,
+    icon: '',
+  };
+  await adapter.put(STORES.WAREHOUSES, warehouse);
+  setState({ warehouses: [...warehouses, warehouse] });
+  return warehouse;
+}
+
+export async function updateWarehouse(id, updates) {
+  const warehouses = getState().warehouses.map(w =>
+    w.id === id ? { ...w, ...updates } : w
+  );
+  const updated = warehouses.find(w => w.id === id);
+  await adapter.put(STORES.WAREHOUSES, updated);
+  setState({ warehouses });
+}
+
+export async function deleteWarehouse(id) {
+  await adapter.delete(STORES.WAREHOUSES, id);
+  const warehouses = getState().warehouses.filter(w => w.id !== id);
+  setState({ warehouses });
+  // Switch to another warehouse if the active one was deleted
+  if (getState().activeWarehouseId === id) {
+    const next = warehouses[0] || null;
+    setState({ activeWarehouseId: next ? next.id : null });
+  }
+}
+
 // --- Pallet Types Actions ---
 
 export async function addPalletType(palletType) {
@@ -330,25 +375,21 @@ export async function seedInitialData() {
   const state = getState();
 
   // --- Warehouses ---
-  // Always update warehouses to ensure they have icons
-  const warehousesWithIcons = [
-    { id: 'wh1', name: 'Magazyn 1', sortOrder: 1, 
-      icon: '<img src="imgs/pngtree-black-elephant-on-a-white-wall-vector-png-image_6951789.png" alt="Słoń">' },
-    { id: 'wh2', name: 'Magazyn 2', sortOrder: 2, 
-      icon: '<img src="imgs/73168.png" alt="Wieloryb">' },
-    { id: 'wh3', name: 'Magazyn 3', sortOrder: 3, 
-      icon: '<img src="imgs/47441.png" alt="Foka">' },
-    { id: 'wh4', name: 'Magazyn 4', sortOrder: 4, 
-      icon: '<img src="imgs/42901-200.png" alt="Niedźwiedź">' },
-  ];
-  
+  // Only seed warehouses if none exist yet (preserve user-defined warehouses)
   if (state.warehouses.length === 0) {
-    await adapter.putMany(STORES.WAREHOUSES, warehousesWithIcons);
-  } else {
-    // Update existing warehouses to add icons
-    await adapter.putMany(STORES.WAREHOUSES, warehousesWithIcons);
+    const defaultWarehouses = [
+      { id: 'wh1', name: 'Magazyn 1', sortOrder: 1,
+        icon: '<img src="imgs/pngtree-black-elephant-on-a-white-wall-vector-png-image_6951789.png" alt="Słoń">' },
+      { id: 'wh2', name: 'Magazyn 2', sortOrder: 2,
+        icon: '<img src="imgs/73168.png" alt="Wieloryb">' },
+      { id: 'wh3', name: 'Magazyn 3', sortOrder: 3,
+        icon: '<img src="imgs/47441.png" alt="Foka">' },
+      { id: 'wh4', name: 'Magazyn 4', sortOrder: 4,
+        icon: '<img src="imgs/42901-200.png" alt="Niedźwiedź">' },
+    ];
+    await adapter.putMany(STORES.WAREHOUSES, defaultWarehouses);
+    setState({ warehouses: defaultWarehouses });
   }
-  setState({ warehouses: warehousesWithIcons });
 
   // --- Service definitions ---
   if (state.serviceDefinitions.length === 0) {

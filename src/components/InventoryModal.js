@@ -5,8 +5,15 @@ import {
 } from '../store/selectors.js';
 import { closeModal } from '../store/actions.js';
 import { saveInventory, sumEntries, getRecordHistory, calculateStockByPalletType } from '../services/inventoryService.js';
-import { formatDatePL, formatTimestamp } from '../utils/date.js';
+import { formatDatePL, formatTimestamp, today } from '../utils/date.js';
 import { isValidQty, parseQty } from '../utils/validators.js';
+
+/** Returns hours elapsed since the start of ISO date string (midnight local time). */
+function hoursSinceDate(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const midnight = new Date(y, m - 1, d, 0, 0, 0, 0);
+  return (Date.now() - midnight.getTime()) / 3_600_000;
+}
 
 /**
  * Modal for editing daily services.
@@ -97,6 +104,46 @@ export function InventoryModal() {
     onClick: closeModal,
   }, '\u00D7'));
   modal.appendChild(header);
+
+  // ── Date-confirmation warning (>12 h since midnight of the selected date) ───
+  const hoursElapsed = hoursSinceDate(date);
+  const needsConfirmation = date < today() && hoursElapsed > 12;
+  let dateConfirmed = !needsConfirmation; // already confirmed if ≤12 h
+
+  let saveBtn; // forward-declared so the banner can enable/disable it
+
+  if (needsConfirmation) {
+    const banner = el('div', { className: 'modal-date-warning' });
+
+    const icon = el('span', { className: 'modal-date-warning__icon' }, '⚠');
+    const msg  = el('div', { className: 'modal-date-warning__msg' });
+    msg.appendChild(el('strong', {}, 'Uwaga — wprowadzasz dane z opóźnieniem'));
+    msg.appendChild(el('br'));
+    msg.appendChild(document.createTextNode(
+      `Wybrana data: ${formatDatePL(date)}. Aby potwierdzić, przepisz ją poniżej w formacie DD.MM.RRRR.`
+    ));
+    banner.appendChild(icon);
+    banner.appendChild(msg);
+
+    const confirmRow = el('div', { className: 'modal-date-warning__row' });
+    const confirmInput = el('input', {
+      type: 'text',
+      className: 'modal-date-warning__input',
+      placeholder: 'DD.MM.RRRR',
+      autocomplete: 'off',
+      onInput: (e) => {
+        const val = e.target.value.trim();
+        const expected = formatDatePL(date); // e.g. "18.02.2026"
+        dateConfirmed = val === expected;
+        confirmInput.classList.toggle('modal-date-warning__input--ok',  dateConfirmed);
+        confirmInput.classList.toggle('modal-date-warning__input--err', !dateConfirmed && val.length > 0);
+        if (saveBtn) saveBtn.disabled = !dateConfirmed;
+      },
+    });
+    confirmRow.appendChild(confirmInput);
+    banner.appendChild(confirmRow);
+    modal.appendChild(banner);
+  }
 
   // Body
   const body = el('div', { className: 'modal__body' });
@@ -383,8 +430,9 @@ export function InventoryModal() {
     className: 'btn-secondary',
     onClick: closeModal,
   }, 'Anuluj'));
-  footer.appendChild(el('button', {
+  saveBtn = el('button', {
     className: 'btn-primary',
+    disabled: !dateConfirmed,
     onClick: async () => {
       // Convert data to services array format
       const services = [];
@@ -456,11 +504,11 @@ export function InventoryModal() {
         }
       }
 
-      // Always allow saving
       await saveInventory(contractorId, warehouseId, date, services, userName);
       closeModal();
     },
-  }, 'Zapisz'));
+  }, 'Zapisz');
+  footer.appendChild(saveBtn);
   modal.appendChild(footer);
 
   overlay.appendChild(modal);

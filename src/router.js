@@ -4,6 +4,7 @@ import { ContractorServices } from './components/ContractorServices.js';
 import { PalletTypesManager } from './components/PalletTypesManager.js';
 import { MonthlySummary } from './components/MonthlySummary.js';
 import { AuditLogViewer } from './components/AuditLogViewer.js';
+import { WarehousesManager } from './components/WarehousesManager.js';
 
 /**
  * Returns the component for the active tab.
@@ -21,6 +22,8 @@ export function getActiveView() {
       return PalletTypesManager();
     case 'summary':
       return MonthlySummary();
+    case 'warehouses':
+      return WarehousesManager();
     case 'audit':
       return AuditLogViewer();
     default:

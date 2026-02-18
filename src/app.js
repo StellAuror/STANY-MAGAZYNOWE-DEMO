@@ -191,6 +191,13 @@ function doRender() {
     const state = getState();
     const activeTab = state.activeTab || 'inventory';
 
+    const navContainer = el('div', { className: 'sidebar-nav-container' });
+
+    // Navigation tabs
+    navContainer.appendChild(Tabs());
+
+    sidebarEl.appendChild(navContainer);
+
     const calendarSlot = el('div', { className: 'sidebar-calendar-slot' });
     const selectedDate = getSelectedDate();
     const calendar = InlineCalendar(selectedDate, (newDate) => {
@@ -202,12 +209,9 @@ function doRender() {
     calendarSlot.appendChild(calendar);
     sidebarEl.appendChild(calendarSlot);
 
-    const navContainer = el('div', { className: 'sidebar-nav-container' });
-
-    // Navigation tabs
-    navContainer.appendChild(Tabs());
-
-    sidebarEl.appendChild(navContainer);
+    // Spacer pushes user bar to the bottom
+    const spacer = el('div', { style: { flex: '1' } });
+    sidebarEl.appendChild(spacer);
     
     // User bar at bottom of sidebar
     const userBar = el('div', { className: 'sidebar-user-bar' });

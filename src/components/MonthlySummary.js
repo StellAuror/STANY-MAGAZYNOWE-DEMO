@@ -8,6 +8,9 @@ import { formatCurrency } from '../utils/format.js';
 import { getMonthLabel, formatDatePL } from '../utils/date.js';
 import { BarChartCanvas } from './LineChartCanvas.js';
 
+// Module-level state for report mode toggle
+let reportMode = 'warehouse'; // 'warehouse' | 'transport'
+
 /**
  * View 3: Monthly summary with bar chart on top, filters, table, and TOP5 sections.
  */
@@ -169,25 +172,6 @@ export function MonthlySummary() {
   const reportContractor = contractors.find(c => c.id === reportContractorId);
   const dailyReport = getContractorDailyReport(filters.month, reportContractorId, filters.warehouseId);
   const activeDays = dailyReport.filter(d => d.lines.length > 0);
-  const grandTotal = activeDays.reduce((s, d) => s + d.dayTotal, 0);
-
-  // Export buttons
-  const exportRow = el('div', { className: 'flex gap-sm', style: { marginBottom: '12px' } });
-  exportRow.appendChild(el('span', { className: 'text-secondary', style: { fontSize: '0.85rem', alignSelf: 'center' } },
-    `${reportContractor?.name} — ${getMonthLabel(filters.month)}`));
-
-  const csvBtn = el('button', {
-    className: 'btn-secondary btn-small',
-    onClick: () => exportCSV(dailyReport, reportContractor?.name, filters.month),
-  }, '⬇ CSV');
-  exportRow.appendChild(csvBtn);
-
-  const pdfBtn = el('button', {
-    className: 'btn-primary btn-small',
-    onClick: () => exportPDF(dailyReport, reportContractor?.name, filters.month),
-  }, '⬇ PDF');
-  exportRow.appendChild(pdfBtn);
-  reportSection.appendChild(exportRow);
 
   if (activeDays.length === 0) {
     reportSection.appendChild(el('p', { className: 'text-secondary' }, 'Brak aktywności w tym miesiącu.'));
@@ -195,20 +179,17 @@ export function MonthlySummary() {
     return wrapper;
   }
 
-  // Raport dzienny
-  const reportTable = el('table', { className: 'summary-table' });
-  const rThead = el('thead');
-  const rHdr = el('tr');
-  rHdr.appendChild(el('th', {}, 'Data'));
-  rHdr.appendChild(el('th', {}, 'Kategoria'));
-  rHdr.appendChild(el('th', {}, 'Pozycja'));
-  rHdr.appendChild(el('th', { className: 'text-right' }, 'Ilość'));
-  rHdr.appendChild(el('th', { className: 'text-right' }, 'Cena'));
-  rHdr.appendChild(el('th', { className: 'text-right' }, 'Wartość'));
-  rThead.appendChild(rHdr);
-  reportTable.appendChild(rThead);
+  // Split daily report into two streams: Transport vs. the rest
+  const transportDays = activeDays
+    .map(d => ({ ...d, lines: d.lines.filter(l => l.category === 'Transport') }))
+    .filter(d => d.lines.length > 0)
+    .map(d => ({ ...d, dayTotal: Math.round(d.lines.reduce((s, l) => s + l.total, 0) * 100) / 100 }));
 
-  const rTbody = el('tbody');
+  const otherDays = activeDays
+    .map(d => ({ ...d, lines: d.lines.filter(l => l.category !== 'Transport') }))
+    .filter(d => d.lines.length > 0)
+    .map(d => ({ ...d, dayTotal: Math.round(d.lines.reduce((s, l) => s + l.total, 0) * 100) / 100 }));
+
   const categoryColors = {
     'Ruchy magazynowe': '#2563eb',
     'Transport': '#0891b2',
@@ -216,54 +197,176 @@ export function MonthlySummary() {
     'Stan magazynowy': '#059669',
   };
 
-  for (const day of activeDays) {
-    const rowspan = day.lines.length;
-    for (let i = 0; i < day.lines.length; i++) {
-      const line = day.lines[i];
-      const row = el('tr');
+  /**
+   * Build a daily-breakdown table for a subset of days.
+   */
+  function buildReportTable(days) {
+    const table = el('table', { className: 'summary-table' });
+    const thead = el('thead');
+    const hdr = el('tr');
+    hdr.appendChild(el('th', {}, 'Data'));
+    hdr.appendChild(el('th', {}, 'Kategoria'));
+    hdr.appendChild(el('th', {}, 'Pozycja'));
+    hdr.appendChild(el('th', { className: 'text-right' }, 'Ilość'));
+    hdr.appendChild(el('th', { className: 'text-right' }, 'Cena'));
+    hdr.appendChild(el('th', { className: 'text-right' }, 'Wartość'));
+    thead.appendChild(hdr);
+    table.appendChild(thead);
 
-      if (i === 0) {
-        const dateCell = el('td', {
-          rowspan: String(rowspan),
-          className: 'font-semibold',
-          style: { whiteSpace: 'nowrap', verticalAlign: 'top', paddingTop: '10px' },
-        }, formatDatePL(day.date));
-        row.appendChild(dateCell);
+    const tbody = el('tbody');
+
+    for (const day of days) {
+      const rowspan = day.lines.length;
+      for (let i = 0; i < day.lines.length; i++) {
+        const line = day.lines[i];
+        const row = el('tr');
+
+        if (i === 0) {
+          const dateCell = el('td', {
+            rowspan: String(rowspan),
+            className: 'font-semibold',
+            style: { whiteSpace: 'nowrap', verticalAlign: 'top', paddingTop: '10px' },
+          }, formatDatePL(day.date));
+          row.appendChild(dateCell);
+        }
+
+        const catColor = categoryColors[line.category] || 'var(--color-text-secondary)';
+        const catCell = el('td', {});
+        catCell.appendChild(el('span', {
+          style: {
+            fontSize: '0.72rem', fontWeight: '700', padding: '2px 7px',
+            borderRadius: '999px', background: catColor + '1a', color: catColor,
+            textTransform: 'uppercase', letterSpacing: '0.04em',
+          },
+        }, line.category));
+        row.appendChild(catCell);
+
+        row.appendChild(el('td', {}, line.name));
+        row.appendChild(el('td', { className: 'cell-number' }, String(line.qty)));
+        row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(line.price)));
+        row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(line.total)));
+        tbody.appendChild(row);
       }
 
-      const catColor = categoryColors[line.category] || 'var(--color-text-secondary)';
-      const catCell = el('td', {});
-      catCell.appendChild(el('span', {
-        style: {
-          fontSize: '0.72rem', fontWeight: '700', padding: '2px 7px',
-          borderRadius: '999px', background: catColor + '1a', color: catColor,
-          textTransform: 'uppercase', letterSpacing: '0.04em',
-        },
-      }, line.category));
-      row.appendChild(catCell);
-
-      row.appendChild(el('td', {}, line.name));
-      row.appendChild(el('td', { className: 'cell-number' }, String(line.qty)));
-      row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(line.price)));
-      row.appendChild(el('td', { className: 'cell-number' }, formatCurrency(line.total)));
-      rTbody.appendChild(row);
+      // Day subtotal
+      const subtotalRow = el('tr', { style: { background: '#f8fafc', borderTop: '1px solid var(--color-border)' } });
+      subtotalRow.appendChild(el('td', { colspan: '5', style: { textAlign: 'right', fontWeight: '600', fontSize: '0.85rem', color: 'var(--color-text-secondary)', padding: '4px 12px' } }, `Suma ${formatDatePL(day.date)}:`));
+      subtotalRow.appendChild(el('td', { className: 'cell-number font-semibold' }, formatCurrency(day.dayTotal)));
+      tbody.appendChild(subtotalRow);
     }
 
-    // Day subtotal row
-    const subtotalRow = el('tr', { style: { background: '#f8fafc', borderTop: '1px solid var(--color-border)' } });
-    subtotalRow.appendChild(el('td', { colspan: '5', style: { textAlign: 'right', fontWeight: '600', fontSize: '0.85rem', color: 'var(--color-text-secondary)', padding: '4px 12px' } }, `Suma ${formatDatePL(day.date)}:`));
-    subtotalRow.appendChild(el('td', { className: 'cell-number font-semibold' }, formatCurrency(day.dayTotal)));
-    rTbody.appendChild(subtotalRow);
+    // Grand total for this section
+    const sectionTotal = Math.round(days.reduce((s, d) => s + d.dayTotal, 0) * 100) / 100;
+    const grandRow = el('tr', { className: 'total-row' });
+    grandRow.appendChild(el('td', { colspan: '5' }, 'SUMA MIESIĄCA'));
+    grandRow.appendChild(el('td', { className: 'cell-number' }, formatCurrency(sectionTotal)));
+    tbody.appendChild(grandRow);
+
+    table.appendChild(tbody);
+    return { table, total: sectionTotal };
   }
 
-  // Grand total
-  const grandRow = el('tr', { className: 'total-row' });
-  grandRow.appendChild(el('td', { colspan: '5' }, 'SUMA MIESIĄCA'));
-  grandRow.appendChild(el('td', { className: 'cell-number' }, formatCurrency(Math.round(grandTotal * 100) / 100)));
-  rTbody.appendChild(grandRow);
+  /**
+   * Build a titled subsection card with export buttons and table.
+   */
+  function buildSubSection(title, accentColor, days, csvLabel) {
+    const section = el('div', { className: 'report-subsection' });
 
-  reportTable.appendChild(rTbody);
-  reportSection.appendChild(reportTable);
+    const titleRow = el('div', { className: 'report-subsection__header' });
+    titleRow.appendChild(el('span', {
+      className: 'report-subsection__badge',
+      style: { background: accentColor + '1a', color: accentColor },
+    }, title));
+
+    const btnGroup = el('div', { className: 'flex gap-sm' });
+    btnGroup.appendChild(el('button', {
+      className: 'btn-secondary btn-small',
+      onClick: () => exportCSV(days, reportContractor?.name, filters.month, csvLabel),
+    }, '⬇ CSV'));
+    btnGroup.appendChild(el('button', {
+      className: 'btn-primary btn-small',
+      onClick: () => exportPDF(days, reportContractor?.name, filters.month, title),
+    }, '⬇ PDF'));
+    titleRow.appendChild(btnGroup);
+    section.appendChild(titleRow);
+
+    const { table } = buildReportTable(days);
+    section.appendChild(table);
+    return section;
+  }
+
+  // --- Report mode switcher ---
+  const switcherRow = el('div', { className: 'report-mode-switcher' });
+
+  const modes = [
+    { id: 'warehouse', label: 'Raport magazynowy', color: '#2563eb' },
+    { id: 'transport', label: 'Raport transportowy', color: '#0891b2' },
+  ];
+
+  const switchBtns = {};
+  for (const mode of modes) {
+    const btn = el('button', {
+      className: 'report-mode-switcher__btn' + (reportMode === mode.id ? ' report-mode-switcher__btn--active' : ''),
+      style: reportMode === mode.id ? { '--accent': mode.color } : {},
+      onClick: () => {
+        reportMode = mode.id;
+        // Re-render content pane only
+        renderContent();
+        // Update button states
+        for (const [mid, b] of Object.entries(switchBtns)) {
+          const m = modes.find(x => x.id === mid);
+          b.className = 'report-mode-switcher__btn' + (mid === reportMode ? ' report-mode-switcher__btn--active' : '');
+          b.style.setProperty('--accent', mid === reportMode ? m.color : 'transparent');
+        }
+      },
+    }, mode.label);
+    if (reportMode === mode.id) btn.style.setProperty('--accent', mode.color);
+    switchBtns[mode.id] = btn;
+    switcherRow.appendChild(btn);
+  }
+  reportSection.appendChild(switcherRow);
+
+  // Content pane — swapped by switcher
+  const contentPane = el('div', { className: 'report-content-pane' });
+  reportSection.appendChild(contentPane);
+
+  function renderContent() {
+    clearElement(contentPane);
+    const activeDays = reportMode === 'transport' ? transportDays : otherDays;
+    const title    = reportMode === 'transport' ? 'Transport' : 'Pozostałe usługi';
+    const color    = reportMode === 'transport' ? '#0891b2'   : '#2563eb';
+    const csvLabel = reportMode === 'transport' ? 'transport' : 'pozostale';
+
+    if (activeDays.length === 0) {
+      contentPane.appendChild(el('p', {
+        className: 'text-secondary',
+        style: { padding: '20px 0' },
+      }, 'Brak danych dla tej kategorii w wybranym miesiącu.'));
+      return;
+    }
+
+    // Export buttons bar
+    const exportRow = el('div', { className: 'report-export-bar' });
+    exportRow.appendChild(el('span', { className: 'text-secondary', style: { fontSize: '0.85rem' } },
+      `${reportContractor?.name} — ${getMonthLabel(filters.month)}`));
+    const btnGroup = el('div', { className: 'flex gap-sm' });
+    btnGroup.appendChild(el('button', {
+      className: 'btn-secondary btn-small',
+      onClick: () => exportCSV(activeDays, reportContractor?.name, filters.month, csvLabel),
+    }, '⬇ CSV'));
+    btnGroup.appendChild(el('button', {
+      className: 'btn-primary btn-small',
+      onClick: () => exportPDF(activeDays, reportContractor?.name, filters.month, title),
+    }, '⬇ PDF'));
+    exportRow.appendChild(btnGroup);
+    contentPane.appendChild(exportRow);
+
+    const { table } = buildReportTable(activeDays);
+    contentPane.appendChild(table);
+  }
+
+  renderContent();
+
   wrapper.appendChild(reportSection);
 
   return wrapper;
@@ -271,9 +374,9 @@ export function MonthlySummary() {
 
 // ── Export helpers ────────────────────────────────────────────────────────────
 
-function exportCSV(dailyReport, contractorName, month) {
+function exportCSV(days, contractorName, month, sectionLabel) {
   const rows = [['Data', 'Kategoria', 'Pozycja', 'Ilość', 'Cena', 'Wartość']];
-  for (const day of dailyReport) {
+  for (const day of days) {
     for (const line of day.lines) {
       rows.push([day.date, line.category, line.name, line.qty, line.price.toFixed(2), line.total.toFixed(2)]);
     }
@@ -281,21 +384,21 @@ function exportCSV(dailyReport, contractorName, month) {
       rows.push([day.date, '', 'SUMA DNIA', '', '', day.dayTotal.toFixed(2)]);
     }
   }
-  const grandTotal = dailyReport.reduce((s, d) => s + d.dayTotal, 0);
+  const grandTotal = days.reduce((s, d) => s + d.dayTotal, 0);
   rows.push(['', '', 'SUMA MIESIĄCA', '', '', grandTotal.toFixed(2)]);
 
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `raport_${contractorName}_${month}.csv`;
+  a.download = `raport_${contractorName}_${month}${sectionLabel ? '_' + sectionLabel : ''}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function exportPDF(dailyReport, contractorName, month) {
-  const activeDays = dailyReport.filter(d => d.lines.length > 0);
+function exportPDF(days, contractorName, month, sectionTitle) {
+  const activeDays = days.filter(d => d.lines.length > 0);
   const grandTotal = activeDays.reduce((s, d) => s + d.dayTotal, 0);
 
   const categoryColors = {
@@ -331,7 +434,7 @@ function exportPDF(dailyReport, contractorName, month) {
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Raport — ${contractorName} — ${month}</title>
+<title>Raport — ${contractorName} — ${month}${sectionTitle ? ' — ' + sectionTitle : ''}</title>
 <style>
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1d23; margin: 32px; }
   h1 { font-size: 1.4rem; margin-bottom: 4px; }
@@ -346,7 +449,7 @@ function exportPDF(dailyReport, contractorName, month) {
 </style>
 </head>
 <body>
-<h1>Raport miesięczny</h1>
+<h1>Raport miesięczny${sectionTitle ? ' — ' + sectionTitle : ''}</h1>
 <p>${contractorName} &mdash; ${month}</p>
 <table>
   <thead><tr>
