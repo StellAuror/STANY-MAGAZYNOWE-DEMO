@@ -1,16 +1,16 @@
 import indexedDbAdapter from './adapters/indexedDbAdapter.js';
-import { setAdapter, loadAllData, seedInitialData, setCurrentUser, clearAllDataAndReseed } from './store/actions.js';
+import { setAdapter, loadAllData, seedInitialData, setCurrentUser, clearAllDataAndReseed } from './store/actions.js?v=3';
 import { subscribe, getState } from './store/store.js';
-import { getCurrentUser, getActiveWarehouseId, getWarehouses } from './store/selectors.js';
+import { getCurrentUser, getActiveWarehouseId, getWarehouses } from './store/selectors.js?v=3';
 import { WarehouseSwitch } from './components/WarehouseSwitch.js';
 import { Tabs, getWarehouseHeaderColor } from './components/Tabs.js';
 import { InventoryModal } from './components/InventoryModal.js';
 import { PriceHistoryEditor } from './components/PriceHistoryEditor.js';
 import { PalletPriceEditor } from './components/PalletPriceEditor.js';
-import { getActiveView } from './router.js';
+import { getActiveView } from './router.js?v=3';
 import { el, clearElement } from './utils/dom.js';
-import { getSelectedDate } from './store/selectors.js';
-import { setSelectedDate } from './store/actions.js';
+import { getSelectedDate } from './store/selectors.js?v=3';
+import { setSelectedDate } from './store/actions.js?v=3';
 import { today, parseISODate } from './utils/date.js';
 
 /**

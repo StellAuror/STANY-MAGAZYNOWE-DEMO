@@ -1,11 +1,11 @@
 import { el, showMultiPrompt } from '../utils/dom.js';
-import { getActiveWarehouseId, getSelectedDate, getActiveKpisForWarehouse, getKpiValue } from '../store/selectors.js';
-import { saveKpiValue } from '../store/actions.js';
+import { getActiveWarehouseId, getSelectedDate, getActiveKpisForWarehouse, getKpiValue } from '../store/selectors.js?v=3';
+import { saveKpiValue } from '../store/actions.js?v=3';
 import { today } from '../utils/date.js';
 
 /**
  * KPI tab - shows KPI indicators for the active warehouse and selected date.
- * Users can enter values per KPI per day per warehouse.
+ * Each KPI is shown once per assigned contractor (or once if no contractors).
  */
 export function KpiTable() {
   const warehouseId = getActiveWarehouseId();
@@ -27,9 +27,23 @@ export function KpiTable() {
     msg.appendChild(el('p', { className: 'text-secondary text-center', style: { padding: '40px 24px 16px' } },
       'Brak wskaźników KPI przypisanych do tego magazynu.'));
     msg.appendChild(el('p', { className: 'text-secondary text-center', style: { paddingBottom: '40px', fontSize: '0.9rem' } },
-      'Przejdź do zakładki \u201eMagazyny\u201d, aby zdefiniować KPI i przypisać je do magazynów.'));
+      'Przejdź do zakładki \u201eMagazyny/Projekty\u201d, aby zdefiniować KPI i przypisać je do magazynów.'));
     wrapper.appendChild(msg);
     return wrapper;
+  }
+
+  // Expand assignments: one row per contractor (or one row if no contractors)
+  const rows = [];
+  for (const assignment of activeKpis) {
+    const def = assignment.definition;
+    const contractors = assignment.contractors || [];
+    if (contractors.length === 0) {
+      rows.push({ def, contractor: null });
+    } else {
+      for (const c of contractors) {
+        rows.push({ def, contractor: c });
+      }
+    }
   }
 
   const table = el('table', { className: 'data-table' });
@@ -40,46 +54,37 @@ export function KpiTable() {
   headerRow.appendChild(el('th', {}, 'Wskaźnik KPI'));
   headerRow.appendChild(el('th', {}, 'Kontrahent'));
   headerRow.appendChild(el('th', {}, 'Osoba odpowiedzialna'));
-  headerRow.appendChild(el('th', {}, 'Opis'));
+  headerRow.appendChild(el('th', {}, 'Proces'));
+  headerRow.appendChild(el('th', {}, 'Grupowanie'));
   headerRow.appendChild(el('th', { className: 'text-right' }, 'Wartość'));
   headerRow.appendChild(el('th', { className: 'text-center' }, 'Wprowadzono'));
   thead.appendChild(headerRow);
   table.appendChild(thead);
 
   const tbody = el('tbody');
+  const isFuture = selectedDate > todayStr;
 
-  for (const assignment of activeKpis) {
-    const def = assignment.definition;
-    const assignedContractors = assignment.contractors || [];
-    const record = getKpiValue(warehouseId, def.id, selectedDate);
+  for (const { def, contractor } of rows) {
+    const contractorId = contractor ? contractor.id : null;
+    const record = getKpiValue(warehouseId, def.id, selectedDate, contractorId);
 
     const row = el('tr');
 
     row.appendChild(el('td', { className: 'font-semibold' }, def.name));
 
-    // Contractors cell – list chips or dash
-    const ctCell = el('td');
-    if (assignedContractors.length === 0) {
-      ctCell.appendChild(el('span', { className: 'text-secondary' }, '—'));
-    } else {
-      const wrap = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px' } });
-      for (const c of assignedContractors) {
-        wrap.appendChild(el('span', { className: 'msd-chip' }, c.name));
-      }
-      ctCell.appendChild(wrap);
-    }
-    row.appendChild(ctCell);
+    // Contractor cell
+    row.appendChild(el('td', {}, contractor ? contractor.name : '—'));
 
     row.appendChild(el('td', {}, def.responsible || '—'));
-    row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, def.description || '—'));
+    row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, def.proces || '—'));
+    row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, def.grupowanie || '—'));
 
     // Value cell – clickable to open input
-    const isFuture = selectedDate > todayStr;
     const valueDisplay = record != null ? String(record.value) : '—';
     const valueCell = el('td', {
       className: `cell-number ${isFuture ? '' : 'cell-clickable'}`,
       title: isFuture ? 'Nie można wprowadzać danych dla przyszłych dat' : 'Kliknij, aby wprowadzić wartość',
-      onClick: isFuture ? null : () => handleEnterValue(warehouseId, def, selectedDate),
+      onClick: isFuture ? null : () => handleEnterValue(warehouseId, def, selectedDate, contractorId),
     }, valueDisplay);
     if (!isFuture) valueCell.style.cursor = 'pointer';
     row.appendChild(valueCell);
@@ -112,11 +117,12 @@ export function KpiTable() {
   return wrapper;
 }
 
-async function handleEnterValue(warehouseId, def, date) {
-  const current = getKpiValue(warehouseId, def.id, date);
+async function handleEnterValue(warehouseId, def, date, contractorId) {
+  const current = getKpiValue(warehouseId, def.id, date, contractorId);
+  const unitHint = def.description ? ` (${def.description})` : '';
   const result = await showMultiPrompt(`KPI: ${def.name}`, [
     {
-      label: `Wartość${def.description ? ' (' + def.description + ')' : ''}`,
+      label: `Wartość${unitHint}`,
       key: 'value',
       required: true,
       defaultValue: current != null ? String(current.value) : '',
@@ -127,9 +133,8 @@ async function handleEnterValue(warehouseId, def, date) {
   const raw = result.value.trim().replace(',', '.');
   const num = parseFloat(raw);
   if (isNaN(num)) {
-    // Accept also string values – store as-is
-    await saveKpiValue(warehouseId, def.id, date, result.value.trim());
+    await saveKpiValue(warehouseId, def.id, date, result.value.trim(), contractorId);
   } else {
-    await saveKpiValue(warehouseId, def.id, date, num);
+    await saveKpiValue(warehouseId, def.id, date, num, contractorId);
   }
 }

@@ -1,5 +1,5 @@
 import { el } from '../utils/dom.js';
-import { getContractors, getActiveWarehouseId, getSelectedDate, getCurrentUser } from '../store/selectors.js';
+import { getContractors, getActiveWarehouseId, getSelectedDate, getCurrentUser, getWarehouseById } from '../store/selectors.js';
 import { openInventoryModal, addContractor } from '../store/actions.js';
 import {
   calculateTotalStock,
@@ -27,6 +27,16 @@ export function ContractorsTable() {
   const userName = getCurrentUser();
 
   const wrapper = el('div');
+
+  // If the active item is a project (not a warehouse), show an informational notice
+  const activeWarehouse = getWarehouseById(warehouseId);
+  if (activeWarehouse && activeWarehouse.isWarehouse === false) {
+    wrapper.appendChild(el('div', {
+      className: 'view-note',
+      style: { margin: '24px', padding: '16px', background: 'var(--color-bg-alt, #f5f5f5)', borderRadius: '6px', border: '1px solid var(--color-border)' },
+    }, `„${activeWarehouse.name}" jest projektem — stany magazynowe nie są dostępne. Przejdź do zakładki KPI, aby wprowadzać wskaźniki dla tego projektu.`));
+    return wrapper;
+  }
 
   // Table
   const table = el('table', { className: 'data-table' });

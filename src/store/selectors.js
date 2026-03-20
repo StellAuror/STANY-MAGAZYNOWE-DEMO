@@ -12,6 +12,13 @@ export function getWarehouses() {
   return getState().warehouses.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+/** Get only items marked as actual warehouses (isWarehouse !== false), sorted by sortOrder */
+export function getWarehousesOnly() {
+  return getState().warehouses
+    .filter(w => w.isWarehouse !== false)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 /** Get active warehouse ID */
 export function getActiveWarehouseId() {
   return getState().activeWarehouseId;
@@ -263,9 +270,10 @@ export function getActiveKpisForWarehouse(warehouseId) {
     .sort((a, b) => a.definition.name.localeCompare(b.definition.name, 'pl'));
 }
 
-/** Get KPI value for warehouse+kpi+date */
-export function getKpiValue(warehouseId, kpiId, date) {
+/** Get KPI value for warehouse+kpi+date, optionally filtered by contractorId */
+export function getKpiValue(warehouseId, kpiId, date, contractorId = null) {
   return getState().kpiValues.find(
     v => v.warehouseId === warehouseId && v.kpiId === kpiId && v.date === date
+      && (v.contractorId || null) === contractorId
   ) || null;
 }

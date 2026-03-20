@@ -236,6 +236,33 @@
   color: #6b7280;
 }
 
+.badge--warehouse {
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge--project {
+  background: #fef3c7;
+  color: #92400e;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.dialog__label--checkbox {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 500;
+}
+
 /* Legacy status badge */
 .status-badge {
   display: inline-block;

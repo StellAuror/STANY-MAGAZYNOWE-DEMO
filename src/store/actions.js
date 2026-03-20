@@ -319,12 +319,13 @@ export async function updatePalletPrice(id, updates) {
 
 // --- Warehouse Actions ---
 
-export async function addWarehouse(name) {
+export async function addWarehouse(name, isWarehouse = true) {
   const warehouses = getState().warehouses;
   const maxOrder = warehouses.reduce((max, w) => Math.max(max, w.sortOrder || 0), 0);
   const warehouse = {
     id: generateId(),
     name,
+    isWarehouse,
     sortOrder: maxOrder + 1,
     icon: '',
   };
@@ -766,8 +767,8 @@ export async function updateServiceDefinition(id, updates) {
 
 // --- KPI Definition Actions ---
 
-export async function addKpiDefinition(name, responsible, description) {
-  const kpiDef = { id: generateId(), name, responsible, description, createdAt: Date.now() };
+export async function addKpiDefinition(name, responsible, description, proces = '', grupowanie = '') {
+  const kpiDef = { id: generateId(), name, responsible, description, proces, grupowanie, createdAt: Date.now() };
   await adapter.put(STORES.KPI_DEFINITIONS, kpiDef);
   setState({ kpiDefinitions: [...getState().kpiDefinitions, kpiDef] });
   return kpiDef;
@@ -823,10 +824,11 @@ export async function unassignKpiFromWarehouse(warehouseId, kpiId) {
 
 // --- KPI Value Actions ---
 
-export async function saveKpiValue(warehouseId, kpiId, date, value) {
+export async function saveKpiValue(warehouseId, kpiId, date, value, contractorId = null) {
   const state = getState();
   const existing = state.kpiValues.find(
     v => v.warehouseId === warehouseId && v.kpiId === kpiId && v.date === date
+      && (v.contractorId || null) === contractorId
   );
   if (existing) {
     const updated = { ...existing, value, updatedAt: Date.now() };
@@ -835,7 +837,7 @@ export async function saveKpiValue(warehouseId, kpiId, date, value) {
       kpiValues: state.kpiValues.map(v => v.id === existing.id ? updated : v),
     });
   } else {
-    const record = { id: generateId(), warehouseId, kpiId, date, value, createdAt: Date.now() };
+    const record = { id: generateId(), warehouseId, kpiId, date, value, contractorId, createdAt: Date.now() };
     await adapter.put(STORES.KPI_VALUES, record);
     setState({ kpiValues: [...state.kpiValues, record] });
   }

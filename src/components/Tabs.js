@@ -8,7 +8,7 @@ const TAB_DEFINITIONS = [
   { id: 'contractor', label: 'Kontrahent' },
   { id: 'pallets', label: 'Rodzaje palet' },
   { id: 'summary', label: 'Podsumowanie' },
-  { id: 'warehouses', label: 'Magazyny' },
+  { id: 'warehouses', label: 'Magazyny/Projekty' },
   { id: 'audit', label: 'Audit Log' },
 ];
 

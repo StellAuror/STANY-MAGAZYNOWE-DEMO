@@ -5,7 +5,7 @@ import { PalletTypesManager } from './components/PalletTypesManager.js';
 import { MonthlySummary } from './components/MonthlySummary.js';
 import { AuditLogViewer } from './components/AuditLogViewer.js';
 import { WarehousesManager } from './components/WarehousesManager.js';
-import { KpiTable } from './components/KpiTable.js';
+import { KpiTable } from './components/KpiTable.js?v=3';
 
 /**
  * Returns the component for the active tab.

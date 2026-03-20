@@ -183,17 +183,27 @@ export function showMultiPrompt(title, fields) {
 
     for (const field of fields) {
       const row = el('div', { className: 'dialog__field' });
-      row.appendChild(el('label', { className: 'dialog__label' }, field.label));
-      const input = el('input', {
-        type: 'text',
-        className: 'dialog__input',
-        value: field.defaultValue || '',
-        placeholder: field.placeholder || '',
-      });
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { overlay.remove(); resolve(null); }
-      });
-      row.appendChild(input);
+      let input;
+      if (field.type === 'checkbox') {
+        const labelEl = el('label', { className: 'dialog__label dialog__label--checkbox' });
+        input = el('input', { type: 'checkbox' });
+        if (field.defaultValue) input.checked = true;
+        labelEl.appendChild(input);
+        labelEl.appendChild(document.createTextNode('\u00a0' + field.label));
+        row.appendChild(labelEl);
+      } else {
+        row.appendChild(el('label', { className: 'dialog__label' }, field.label));
+        input = el('input', {
+          type: 'text',
+          className: 'dialog__input',
+          value: field.defaultValue || '',
+          placeholder: field.placeholder || '',
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') { overlay.remove(); resolve(null); }
+        });
+        row.appendChild(input);
+      }
       body.appendChild(row);
       inputs[field.key] = input;
     }
@@ -221,7 +231,9 @@ export function showMultiPrompt(title, fields) {
         }
         const result = {};
         for (const field of fields) {
-          result[field.key] = inputs[field.key].value;
+          result[field.key] = field.type === 'checkbox'
+            ? inputs[field.key].checked
+            : inputs[field.key].value;
         }
         overlay.remove();
         resolve(result);

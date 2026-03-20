@@ -1,4 +1,4 @@
-import { el, showMultiPrompt, showConfirm, showPrompt } from '../utils/dom.js';
+import { el, showMultiPrompt, showConfirm } from '../utils/dom.js';
 import { getState } from '../store/store.js';
 import {
   addWarehouse, updateWarehouse, deleteWarehouse,
@@ -18,24 +18,25 @@ export function WarehousesManager() {
 
   // ── Warehouses Section ────────────────────────────────────────────
   const whHeader = el('div', { className: 'view-header flex items-center justify-between' });
-  whHeader.appendChild(el('h2', {}, 'Magazyny'));
+  whHeader.appendChild(el('h2', {}, 'Magazyny i Projekty'));
   const addWhBtn = el('button', {
     className: 'btn btn-primary',
     onClick: () => handleAddWarehouse(),
-  }, '+ Dodaj magazyn');
+  }, '+ Dodaj');
   whHeader.appendChild(addWhBtn);
   container.appendChild(whHeader);
 
   container.appendChild(el('p', { className: 'view-note' },
-    'Magazyny są widoczne w przełączniku w górnym pasku aplikacji. ' +
-    'Możesz dowolnie dodawać, zmieniać nazwy i usuwać magazyny.'
+    'Magazyny i projekty są widoczne w przełączniku w górnym pasku aplikacji. ' +
+    'Magazyny obsługują stany magazynowe i KPI. Projekty są zawężone tylko do KPI.'
   ));
 
   const whTable = el('table', { className: 'data-table' });
   const whThead = el('thead');
   const whHeaderRow = el('tr');
   whHeaderRow.appendChild(el('th', { style: { width: '48px' } }, 'Lp.'));
-  whHeaderRow.appendChild(el('th', {}, 'Nazwa magazynu'));
+  whHeaderRow.appendChild(el('th', {}, 'Nazwa'));
+  whHeaderRow.appendChild(el('th', { style: { width: '120px' } }, 'Typ'));
   whHeaderRow.appendChild(el('th', { className: 'text-right', style: { width: '220px' } }, 'Akcje'));
   whThead.appendChild(whHeaderRow);
   whTable.appendChild(whThead);
@@ -44,32 +45,38 @@ export function WarehousesManager() {
   if (sorted.length === 0) {
     const emptyRow = el('tr');
     emptyRow.appendChild(el('td', {
-      colspan: '3',
+      colspan: '4',
       className: 'text-center text-secondary',
       style: { padding: '24px' },
-    }, 'Brak magazynów. Kliknij "+ Dodaj magazyn", aby dodać pierwszy.'));
+    }, 'Brak pozycji. Kliknij "+ Dodaj", aby dodać pierwszy magazyn lub projekt.'));
     whTbody.appendChild(emptyRow);
   } else {
     sorted.forEach((wh, idx) => {
+      const isWh = wh.isWarehouse !== false;
       const row = el('tr', { className: 'warehouse-row' });
       row.appendChild(el('td', { className: 'text-secondary', style: { width: '48px' } }, String(idx + 1)));
       const nameCell = el('td', {});
       nameCell.appendChild(el('span', { className: 'warehouse-name-text font-semibold' }, wh.name));
       row.appendChild(nameCell);
+      const typeCell = el('td', {});
+      typeCell.appendChild(el('span', {
+        className: isWh ? 'badge badge--warehouse' : 'badge badge--project',
+      }, isWh ? 'Magazyn' : 'Projekt'));
+      row.appendChild(typeCell);
       const actionsCell = el('td', { style: { width: '220px' } });
       const actionsWrap = el('div', { className: 'warehouse-actions' });
       const editBtn = el('button', {
         className: 'btn btn-sm btn-secondary',
         onClick: () => handleEditWarehouse(wh),
-      }, 'Zmień nazwę');
+      }, 'Edytuj');
       const deleteBtn = el('button', {
         className: 'btn btn-sm btn-danger',
         onClick: () => handleDeleteWarehouse(wh),
-        title: 'Usuń magazyn',
+        title: 'Usuń',
       }, 'Usuń');
       if (sorted.length === 1) {
         deleteBtn.disabled = true;
-        deleteBtn.title = 'Nie można usunąć ostatniego magazynu';
+        deleteBtn.title = 'Nie można usunąć ostatniej pozycji';
       }
       actionsWrap.appendChild(editBtn);
       actionsWrap.appendChild(deleteBtn);
@@ -112,6 +119,8 @@ export function WarehousesManager() {
     kpiHRow.appendChild(el('th', {}, 'Nazwa KPI'));
     kpiHRow.appendChild(el('th', {}, 'Osoba odpowiedzialna'));
     kpiHRow.appendChild(el('th', {}, 'Opis'));
+    kpiHRow.appendChild(el('th', {}, 'Proces'));
+    kpiHRow.appendChild(el('th', {}, 'Grupowanie'));
     kpiHRow.appendChild(el('th', {}, 'Magazyny'));
     kpiHRow.appendChild(el('th', {}, 'Kontrahenci'));
     kpiHRow.appendChild(el('th', { className: 'text-right', style: { width: '160px' } }, 'Akcje'));
@@ -125,6 +134,8 @@ export function WarehousesManager() {
       row.appendChild(el('td', { className: 'font-semibold' }, kpi.name));
       row.appendChild(el('td', {}, kpi.responsible || '—'));
       row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, kpi.description || '—'));
+      row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, kpi.proces || '—'));
+      row.appendChild(el('td', { className: 'text-secondary', style: { fontSize: '0.85rem' } }, kpi.grupowanie || '—'));
 
       // ── Warehouse multi-select dropdown ──────────────────────────
       const whCell = el('td');
@@ -190,22 +201,28 @@ export function WarehousesManager() {
 // ── Warehouse handlers ────────────────────────────────────────────
 
 async function handleAddWarehouse() {
-  const name = await showPrompt('Nazwa nowego magazynu:');
-  if (!name || !name.trim()) return;
-  await addWarehouse(name.trim());
+  const result = await showMultiPrompt('Nowy magazyn / projekt', [
+    { label: 'Nazwa', key: 'name', required: true, placeholder: 'np. Magazyn 5 / Projekt Alpha' },
+    { label: 'Czy magazyn (odznacz, jeśli tylko projekt KPI)', key: 'isWarehouse', type: 'checkbox', defaultValue: true },
+  ]);
+  if (!result) return;
+  await addWarehouse(result.name.trim(), result.isWarehouse);
 }
 
 async function handleEditWarehouse(wh) {
-  const name = await showPrompt('Nowa nazwa magazynu:', wh.name);
-  if (!name || !name.trim()) return;
-  if (name.trim() === wh.name) return;
-  await updateWarehouse(wh.id, { name: name.trim() });
+  const result = await showMultiPrompt('Edytuj magazyn / projekt', [
+    { label: 'Nazwa', key: 'name', required: true, defaultValue: wh.name },
+    { label: 'Czy magazyn (odznacz, jeśli tylko projekt KPI)', key: 'isWarehouse', type: 'checkbox', defaultValue: wh.isWarehouse !== false },
+  ]);
+  if (!result) return;
+  await updateWarehouse(wh.id, { name: result.name.trim(), isWarehouse: result.isWarehouse });
 }
 
 async function handleDeleteWarehouse(wh) {
+  const type = wh.isWarehouse !== false ? 'magazyn' : 'projekt';
   const confirmed = await showConfirm(
-    `Czy na pewno chcesz usunąć magazyn „${wh.name}"?\n\n` +
-    'Uwaga: usunięcie magazynu nie usuwa powiązanych wpisów stanów magazynowych ani wartości KPI.'
+    `Czy na pewno chcesz usunąć ${type} „${wh.name}"?\n\n` +
+    'Uwaga: usunięcie nie usuwa powiązanych wpisów stanów magazynowych ani wartości KPI.'
   );
   if (!confirmed) return;
   await deleteWarehouse(wh.id);
@@ -218,12 +235,16 @@ async function handleAddKpi() {
     { label: 'Nazwa KPI', key: 'name', required: true, placeholder: 'np. Czas obsługi zamówienia' },
     { label: 'Osoba odpowiedzialna', key: 'responsible', placeholder: 'np. Jan Kowalski' },
     { label: 'Opis / jednostka miary (opcjonalnie)', key: 'description', placeholder: 'np. minuty, szt., %' },
+    { label: 'Proces', key: 'proces', placeholder: 'np. Przyjęcie, Wydanie' },
+    { label: 'Grupowanie', key: 'grupowanie', placeholder: 'np. Jakość, Efektywność' },
   ]);
   if (!result) return;
   await addKpiDefinition(
     result.name.trim(),
     (result.responsible || '').trim(),
-    (result.description || '').trim()
+    (result.description || '').trim(),
+    (result.proces || '').trim(),
+    (result.grupowanie || '').trim()
   );
 }
 
@@ -232,12 +253,16 @@ async function handleEditKpi(kpi) {
     { label: 'Nazwa KPI', key: 'name', required: true, defaultValue: kpi.name },
     { label: 'Osoba odpowiedzialna', key: 'responsible', defaultValue: kpi.responsible || '' },
     { label: 'Opis / jednostka miary', key: 'description', defaultValue: kpi.description || '' },
+    { label: 'Proces', key: 'proces', defaultValue: kpi.proces || '' },
+    { label: 'Grupowanie', key: 'grupowanie', defaultValue: kpi.grupowanie || '' },
   ]);
   if (!result) return;
   await updateKpiDefinition(kpi.id, {
     name: result.name.trim(),
     responsible: (result.responsible || '').trim(),
     description: (result.description || '').trim(),
+    proces: (result.proces || '').trim(),
+    grupowanie: (result.grupowanie || '').trim(),
   });
 }
 
