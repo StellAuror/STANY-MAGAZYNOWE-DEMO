@@ -311,8 +311,8 @@
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  width: 90%;
-  max-width: 680px;
+  width: 96%;
+  max-width: 860px;
   max-height: 85vh;
   overflow-y: auto;
   animation: slideUp 240ms ease;
@@ -361,6 +361,43 @@
   position: sticky;
   bottom: 0;
   background: var(--color-surface);
+}
+
+/* ── Modal inner tabs ─────────────────────────────────────── */
+.modal-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 0 20px;
+  gap: 2px;
+}
+
+.modal-tab {
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.modal-tab:hover:not(.modal-tab--active) {
+  color: var(--color-text);
+}
+
+.modal-tab--active {
+  color: var(--color-primary, #2563eb);
+  border-bottom-color: var(--color-primary, #2563eb);
+  font-weight: 600;
+}
+
+.modal-tab-panel {
+  min-height: 80px;
 }
 
 /* ── Date-confirmation warning banner ─────────────────────── */
@@ -895,7 +932,7 @@
 .pallets-table__header,
 .pallets-table__row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr 0.9fr 0.9fr;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1.1fr 0.9fr 0.9fr 0.9fr;
   gap: 6px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-border);
@@ -932,11 +969,11 @@
 
 .pallets-table__input {
   width: 100%;
-  max-width: 70px;
-  padding: 5px 6px;
+  max-width: 80px;
+  padding: 7px 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-family: var(--font-mono);
   text-align: center;
 }

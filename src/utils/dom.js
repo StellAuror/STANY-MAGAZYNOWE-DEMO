@@ -18,6 +18,11 @@ export function el(tag, attrs = {}, ...children) {
     } else if (key.startsWith('on') && typeof value === 'function') {
       const event = key.slice(2).toLowerCase();
       element.addEventListener(event, value);
+    } else if (typeof value === 'boolean') {
+      // Boolean attributes (e.g. disabled, checked, readonly) must be set as
+      // JS properties, not via setAttribute — setAttribute('disabled', 'false')
+      // still disables the element because any presence of the attr disables it.
+      element[key] = value;
     } else if (key === 'dataset') {
       for (const [dk, dv] of Object.entries(value)) {
         element.dataset[dk] = dv;

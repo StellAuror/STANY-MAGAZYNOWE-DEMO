@@ -1,6 +1,6 @@
 import { el, showMultiPrompt } from '../utils/dom.js';
-import { getActiveWarehouseId, getSelectedDate, getActiveKpisForWarehouse, getKpiValue } from '../store/selectors.js?v=3';
-import { saveKpiValue } from '../store/actions.js?v=3';
+import { getActiveWarehouseId, getSelectedDate, getActiveKpisForWarehouse, getKpiValue } from '../store/selectors.js';
+import { saveKpiValue } from '../store/actions.js';
 import { today } from '../utils/date.js';
 
 /**
@@ -57,6 +57,7 @@ export function KpiTable() {
   headerRow.appendChild(el('th', {}, 'Proces'));
   headerRow.appendChild(el('th', {}, 'Grupowanie'));
   headerRow.appendChild(el('th', { className: 'text-right' }, 'Wartość'));
+  headerRow.appendChild(el('th', {}, 'Uwaga'));
   headerRow.appendChild(el('th', { className: 'text-center' }, 'Wprowadzono'));
   thead.appendChild(headerRow);
   table.appendChild(thead);
@@ -88,6 +89,11 @@ export function KpiTable() {
     }, valueDisplay);
     if (!isFuture) valueCell.style.cursor = 'pointer';
     row.appendChild(valueCell);
+
+    // Note cell
+    const noteCell = el('td', { className: 'text-secondary', style: { fontSize: '0.85rem', maxWidth: '160px' } },
+      record?.note || '—');
+    row.appendChild(noteCell);
 
     // Status cell
     const statusCell = el('td', { className: 'text-center' });
@@ -128,13 +134,21 @@ async function handleEnterValue(warehouseId, def, date, contractorId) {
       defaultValue: current != null ? String(current.value) : '',
       placeholder: 'np. 42',
     },
+    {
+      label: 'Uwaga (opcjonalnie)',
+      key: 'note',
+      required: false,
+      defaultValue: current?.note || '',
+      placeholder: 'np. dane szacunkowe',
+    },
   ]);
   if (!result) return;
   const raw = result.value.trim().replace(',', '.');
   const num = parseFloat(raw);
+  const note = result.note?.trim() || '';
   if (isNaN(num)) {
-    await saveKpiValue(warehouseId, def.id, date, result.value.trim(), contractorId);
+    await saveKpiValue(warehouseId, def.id, date, result.value.trim(), contractorId, note);
   } else {
-    await saveKpiValue(warehouseId, def.id, date, num, contractorId);
+    await saveKpiValue(warehouseId, def.id, date, num, contractorId, note);
   }
 }

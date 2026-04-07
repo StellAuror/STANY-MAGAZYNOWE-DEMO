@@ -24,10 +24,6 @@ export function calculateTotalStock(contractorId, warehouseId, date) {
           if (svc.palletEntries) {
             svc.palletEntries.forEach(entry => { total -= entry.qty || 0; });
           }
-        } else if (svc.serviceId === 'svc-pallets-correction') {
-          if (svc.palletEntries) {
-            svc.palletEntries.forEach(entry => { total += entry.qty || 0; });
-          }
         }
       });
     }
@@ -55,11 +51,6 @@ export function calculateStockByPalletType(contractorId, warehouseId, upToDate) 
           svc.palletEntries.forEach(entry => {
             const current = stockMap.get(entry.palletTypeId) || 0;
             stockMap.set(entry.palletTypeId, current - (entry.qty || 0));
-          });
-        } else if (svc.serviceId === 'svc-pallets-correction' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => {
-            const current = stockMap.get(entry.palletTypeId) || 0;
-            stockMap.set(entry.palletTypeId, current + (entry.qty || 0));
           });
         }
       });

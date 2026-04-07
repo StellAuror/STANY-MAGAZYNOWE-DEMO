@@ -2,9 +2,11 @@ import { el, clearElement } from '../utils/dom.js';
 import {
   getModalState, getDailyRecord, getCurrentUser,
   getContractorById, getWarehouseById, getEnabledServices, getPalletTypes,
+  getEffectivePrice, getEffectivePalletPrice,
 } from '../store/selectors.js';
 import { closeModal } from '../store/actions.js';
 import { saveInventory, sumEntries, getRecordHistory, calculateStockByPalletType } from '../services/inventoryService.js';
+import { pricingService } from '../services/pricingService.js';
 import { formatDatePL, formatTimestamp, today } from '../utils/date.js';
 import { isValidQty, parseQty } from '../utils/validators.js';
 
@@ -145,8 +147,41 @@ export function InventoryModal() {
     modal.appendChild(banner);
   }
 
+  // ── Tab bar ──────────────────────────────────────────────────────────────────
+  const TAB_IDS = ['palety', 'transport', 'historia', 'cennik'];
+  const TAB_LABELS = ['Palety', 'Transport i VASY', 'Historia', 'Cennik'];
+  let activeModalTab = 'palety';
+  const tabPanels = {};
+  const tabBtns = {};
+
+  const tabBar = el('div', { className: 'modal-tabs' });
+  TAB_IDS.forEach((id, i) => {
+    const btn = el('button', {
+      className: `modal-tab${id === activeModalTab ? ' modal-tab--active' : ''}`,
+      onClick: () => {
+        if (activeModalTab === id) return;
+        tabBtns[activeModalTab].classList.remove('modal-tab--active');
+        tabPanels[activeModalTab].style.display = 'none';
+        activeModalTab = id;
+        tabBtns[id].classList.add('modal-tab--active');
+        tabPanels[id].style.display = '';
+      },
+    }, TAB_LABELS[i]);
+    tabBtns[id] = btn;
+    tabBar.appendChild(btn);
+  });
+  modal.appendChild(tabBar);
+
   // Body
   const body = el('div', { className: 'modal__body' });
+
+  // Create one panel div per tab
+  TAB_IDS.forEach(id => {
+    const panel = el('div', { className: 'modal-tab-panel' });
+    panel.style.display = id === activeModalTab ? '' : 'none';
+    tabPanels[id] = panel;
+    body.appendChild(panel);
+  });
 
   // Check if pallet services are enabled
   const palletInService = enabledServices.find(svc => svc.serviceId === 'svc-pallets-in');
@@ -181,6 +216,7 @@ export function InventoryModal() {
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Korekta'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Cena kor.'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Różnica'));
+      headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Obrót'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Stan'));
       palletsTable.appendChild(headerRow);
       
@@ -272,9 +308,9 @@ export function InventoryModal() {
         corrPriceCell.appendChild(el('span', { style: { fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginLeft: '2px' } }, 'zł'));
         row.appendChild(corrPriceCell);
         
-        // Różnica (calculated: in - out + corr)
+        // Różnica (calculated: in - out, correction NOT included)
         const diffCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
-        const diff = data.qtyIn - data.qtyOut + data.qtyCorr;
+        const diff = data.qtyIn - data.qtyOut;
         const diffDisplay = el('span', { 
           className: 'pallets-table__value',
           style: { 
@@ -285,6 +321,17 @@ export function InventoryModal() {
         }, diff > 0 ? `+${diff}` : String(diff));
         diffCell.appendChild(diffDisplay);
         row.appendChild(diffCell);
+
+        // Obrót (calculated: in + corr if corr!=0, else in + out)
+        const obrotCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
+        const obrot = data.qtyIn + (data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut);
+        const obrotDisplay = el('span', {
+          className: 'pallets-table__value',
+          style: { fontWeight: '600', color: obrot > 0 ? '#2563eb' : 'var(--color-text-secondary)' },
+          dataset: { palletTypeId, displayType: 'obrot' }
+        }, String(obrot));
+        obrotCell.appendChild(obrotDisplay);
+        row.appendChild(obrotCell);
         
         // Stan (calculated)
         const stockCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
@@ -305,7 +352,8 @@ export function InventoryModal() {
       // Helper function to update calculated cells
       function updatePalletRow(palletTypeId) {
         const data = palletData[palletTypeId];
-        const diff = data.qtyIn - data.qtyOut + data.qtyCorr;
+        const diff = data.qtyIn - data.qtyOut;
+        const obrot = data.qtyIn + (data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut);
         const previousStock = stockByType.get(palletTypeId) || 0;
         const newStock = previousStock + diff;
         
@@ -314,6 +362,13 @@ export function InventoryModal() {
         if (diffDisplay) {
           diffDisplay.textContent = diff > 0 ? `+${diff}` : String(diff);
           diffDisplay.style.color = diff > 0 ? '#059669' : diff < 0 ? '#dc2626' : 'var(--color-text-secondary)';
+        }
+
+        // Find and update obrot display
+        const obrotDisplay = palletsTable.querySelector(`[data-pallet-type-id="${palletTypeId}"][data-display-type="obrot"]`);
+        if (obrotDisplay) {
+          obrotDisplay.textContent = String(obrot);
+          obrotDisplay.style.color = obrot > 0 ? '#2563eb' : 'var(--color-text-secondary)';
         }
         
         // Find and update stock display
@@ -324,7 +379,7 @@ export function InventoryModal() {
       }
     }
     
-    body.appendChild(palletsSection);
+    tabPanels['palety'].appendChild(palletsSection);
   }
 
   // Other services section — split into TRANSPORT and VASY
@@ -377,7 +432,7 @@ export function InventoryModal() {
     const transportContainer = el('div', { className: 'services-grid' });
     buildServiceRows(transportServices, transportContainer);
     transportSection.appendChild(transportContainer);
-    body.appendChild(transportSection);
+    tabPanels['transport'].appendChild(transportSection);
   }
 
   if (vasyServices.length > 0) {
@@ -389,7 +444,7 @@ export function InventoryModal() {
     const vasyContainer = el('div', { className: 'services-grid' });
     buildServiceRows(vasyServices, vasyContainer);
     vasySection.appendChild(vasyContainer);
-    body.appendChild(vasySection);
+    tabPanels['transport'].appendChild(vasySection);
   }
 
   // -- History section --
@@ -421,7 +476,74 @@ export function InventoryModal() {
     historySection.appendChild(auditList);
   }
 
-  body.appendChild(historySection);
+  tabPanels['historia'].appendChild(historySection);
+
+  // ── Cennik panel ────────────────────────────────────────────────────────────
+  const cennikPanel = tabPanels['cennik'];
+  cennikPanel.appendChild(el('div', { className: 'section__title' }, 'Aktualne ceny'));
+
+  // Pallet prices
+  const acceptedPalletTypesCennik = contractor?.acceptedPalletTypes || [];
+  const palletTypesCennik = getPalletTypes();
+  if (acceptedPalletTypesCennik.length > 0) {
+    cennikPanel.appendChild(el('div', { className: 'section__title', style: { fontSize: '0.8rem', marginTop: '12px', color: 'var(--color-text-secondary)' } }, 'PALETY'));
+    const palletTable = el('table', { className: 'data-table', style: { width: '100%', marginBottom: '12px' } });
+    const palletHead = el('thead');
+    const palletHeadRow = el('tr');
+    palletHeadRow.appendChild(el('th', {}, 'Typ palety'));
+    palletHeadRow.appendChild(el('th', { className: 'text-right' }, 'Wejście (zł/szt)'));
+    palletHeadRow.appendChild(el('th', { className: 'text-right' }, 'Wyjście (zł/szt)'));
+    palletHead.appendChild(palletHeadRow);
+    palletTable.appendChild(palletHead);
+    const palletBody = el('tbody');
+    acceptedPalletTypesCennik.forEach(ptId => {
+      const pt = palletTypesCennik.find(p => p.id === ptId);
+      if (!pt) return;
+      const priceIn = getEffectivePalletPrice(contractorId, ptId, 'in', date);
+      const priceOut = getEffectivePalletPrice(contractorId, ptId, 'out', date);
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, pt.name + (pt.dimensions ? ` (${pt.dimensions})` : '')));
+      tr.appendChild(el('td', { className: 'text-right' }, priceIn ? `${priceIn.pricePerUnit} zł` : '—'));
+      tr.appendChild(el('td', { className: 'text-right' }, priceOut ? `${priceOut.pricePerUnit} zł` : '—'));
+      palletBody.appendChild(tr);
+    });
+    palletTable.appendChild(palletBody);
+    cennikPanel.appendChild(palletTable);
+  }
+
+  // Service prices
+  const otherServicesCennik = enabledServices.filter(svc =>
+    svc.serviceId !== 'svc-pallets-in' && svc.serviceId !== 'svc-pallets-out'
+  );
+  if (otherServicesCennik.length > 0) {
+    cennikPanel.appendChild(el('div', { className: 'section__title', style: { fontSize: '0.8rem', marginTop: '12px', color: 'var(--color-text-secondary)' } }, 'USŁUGI'));
+    const svcTable = el('table', { className: 'data-table', style: { width: '100%', marginBottom: '12px' } });
+    const svcHead = el('thead');
+    const svcHeadRow = el('tr');
+    svcHeadRow.appendChild(el('th', {}, 'Usługa'));
+    svcHeadRow.appendChild(el('th', { className: 'text-right' }, 'Cena (zł/szt)'));
+    svcHead.appendChild(svcHeadRow);
+    svcTable.appendChild(svcHead);
+    const svcBody = el('tbody');
+    otherServicesCennik.forEach(svc => {
+      const price = getEffectivePrice(contractorId, svc.serviceId, date);
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, svc.definition.name));
+      tr.appendChild(el('td', { className: 'text-right' }, price ? `${price.pricePerUnit} zł` : '—'));
+      svcBody.appendChild(tr);
+    });
+    svcTable.appendChild(svcBody);
+    cennikPanel.appendChild(svcTable);
+  }
+
+  // Storage price
+  const storagePrice = getEffectivePrice(contractorId, 'svc-storage', date);
+  if (storagePrice) {
+    cennikPanel.appendChild(el('div', { className: 'section__title', style: { fontSize: '0.8rem', marginTop: '12px', color: 'var(--color-text-secondary)' } }, 'MAGAZYNOWANIE'));
+    cennikPanel.appendChild(el('p', { style: { fontSize: '0.875rem', margin: '4px 0' } },
+      `Stawka magazynowa: ${storagePrice.pricePerUnit} zł / szt / dzień`));
+  }
+
   modal.appendChild(body);
 
   // Footer

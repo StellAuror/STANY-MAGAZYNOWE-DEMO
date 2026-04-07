@@ -745,6 +745,126 @@ async function seedDemoData(palletTypes) {
     },
   ];
   await adapter.putMany(STORES.AUDIT_LOG, [...auditEntries, ...priceAudits]);
+
+  // --- Pallet prices per type per direction ---
+  const palletPrices = [
+    // ctr1 - Budimex
+    { id: 'pp-ctr1-euro-in',    contractorId: 'ctr1', palletTypeId: 'plt-euro',       direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 3.50,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr1-euro-out',   contractorId: 'ctr1', palletTypeId: 'plt-euro',       direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 2.80,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr1-ind-in',     contractorId: 'ctr1', palletTypeId: 'plt-industrial', direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 5.00,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr1-ind-out',    contractorId: 'ctr1', palletTypeId: 'plt-industrial', direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 4.00,  createdAt: now, updatedAt: now },
+    // ctr2 - Polskie Składy
+    { id: 'pp-ctr2-euro-in',    contractorId: 'ctr2', palletTypeId: 'plt-euro',       direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 3.00,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr2-euro-out',   contractorId: 'ctr2', palletTypeId: 'plt-euro',       direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 2.50,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr2-disp-in',    contractorId: 'ctr2', palletTypeId: 'plt-display',    direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 2.00,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr2-disp-out',   contractorId: 'ctr2', palletTypeId: 'plt-display',    direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 1.80,  createdAt: now, updatedAt: now },
+    // ctr3 - EkoLogistyka
+    { id: 'pp-ctr3-disp-in',    contractorId: 'ctr3', palletTypeId: 'plt-display',    direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 1.90,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr3-disp-out',   contractorId: 'ctr3', palletTypeId: 'plt-display',    direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 1.60,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr3-ind-in',     contractorId: 'ctr3', palletTypeId: 'plt-industrial', direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 4.50,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr3-ind-out',    contractorId: 'ctr3', palletTypeId: 'plt-industrial', direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 3.80,  createdAt: now, updatedAt: now },
+    // ctr4 - Jan Kowalski — rate rise from Feb
+    { id: 'pp-ctr4-euro-in',    contractorId: 'ctr4', palletTypeId: 'plt-euro',       direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 3.20,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr4-euro-in-2',  contractorId: 'ctr4', palletTypeId: 'plt-euro',       direction: 'in',  effectiveFrom: '2026-02-01', pricePerUnit: 3.50,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr4-euro-out',   contractorId: 'ctr4', palletTypeId: 'plt-euro',       direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 2.70,  createdAt: now, updatedAt: now },
+    // ctr5 - MegaPak
+    { id: 'pp-ctr5-euro-in',    contractorId: 'ctr5', palletTypeId: 'plt-euro',       direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 3.10,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr5-euro-out',   contractorId: 'ctr5', palletTypeId: 'plt-euro',       direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 2.60,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr5-ind-in',     contractorId: 'ctr5', palletTypeId: 'plt-industrial', direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 4.80,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr5-ind-out',    contractorId: 'ctr5', palletTypeId: 'plt-industrial', direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 4.00,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr5-disp-in',    contractorId: 'ctr5', palletTypeId: 'plt-display',    direction: 'in',  effectiveFrom: '2025-12-01', pricePerUnit: 2.10,  createdAt: now, updatedAt: now },
+    { id: 'pp-ctr5-disp-out',   contractorId: 'ctr5', palletTypeId: 'plt-display',    direction: 'out', effectiveFrom: '2025-12-01', pricePerUnit: 1.90,  createdAt: now, updatedAt: now },
+  ];
+  await adapter.putMany(STORES.PALLET_PRICES, palletPrices);
+
+  // --- KPI definitions ---
+  const kpiDefinitions = [
+    { id: 'kpi-czas-dostawy',   name: 'Czas dostawy',           responsible: 'Logistyka',    description: 'Średni czas od zamówienia do dostawy (dni)',         proces: 'Transport',     grupowanie: 'Wydajność', createdAt: now },
+    { id: 'kpi-wypeln-mag',     name: 'Wypełnienie magazynu',   responsible: 'Magazyn',      description: 'Procentowe wykorzystanie powierzchni magazynowej',    proces: 'Magazynowanie', grupowanie: 'Wydajność', createdAt: now },
+    { id: 'kpi-bledy-komp',     name: 'Błędy kompletacji',      responsible: 'Magazyn',      description: 'Liczba błędów kompletacji na 1000 pozycji',          proces: 'Magazynowanie', grupowanie: 'Jakość',    createdAt: now },
+    { id: 'kpi-rotacja-pal',    name: 'Rotacja palet',          responsible: 'Magazyn',      description: 'Liczba obrotów palet w ciągu miesiąca',              proces: 'Magazynowanie', grupowanie: 'Wydajność', createdAt: now },
+    { id: 'kpi-terminowosc',    name: 'Terminowość dostaw',     responsible: 'Transport',    description: 'Procent dostaw zrealizowanych w terminie',            proces: 'Transport',     grupowanie: 'Jakość',    createdAt: now },
+    { id: 'kpi-koszty-km',      name: 'Koszt / km',             responsible: 'Transport',    description: 'Średni koszt na kilometr trasy (zł)',                 proces: 'Transport',     grupowanie: 'Finanse',   createdAt: now },
+    { id: 'kpi-uszkodzenia',    name: 'Uszkodzenia towaru',     responsible: 'Magazyn',      description: 'Liczba zgłoszonych uszkodzeń towaru w miesiącu',     proces: 'Magazynowanie', grupowanie: 'Jakość',    createdAt: now },
+    { id: 'kpi-produktywnosc',  name: 'Produktywność prac.',    responsible: 'HR',           description: 'Liczba palet obsłużonych na pracownika dziennie',    proces: 'Magazynowanie', grupowanie: 'Wydajność', createdAt: now },
+    { id: 'kpi-obrot-tow',      name: 'Obrót towaru',           responsible: 'Sprzedaż',     description: 'Liczba dni od przyjęcia do wydania towaru (śred.)',   proces: 'Magazynowanie', grupowanie: 'Wydajność', createdAt: now },
+    { id: 'kpi-satysfak-kl',    name: 'Satysfakcja klienta',    responsible: 'Obsługa kl.',  description: 'Ocena NPS od klientów (skala 1-10)',                  proces: 'CRM',           grupowanie: 'Jakość',    createdAt: now },
+  ];
+  await adapter.putMany(STORES.KPI_DEFINITIONS, kpiDefinitions);
+
+  // --- Assign KPIs to warehouses ---
+  // wh1 and wh2 are full warehouses — most KPIs; wh3/wh4 get fewer
+  const warehouseKpis = [
+    { id: 'wk-wh1-k1',  warehouseId: 'wh1', kpiId: 'kpi-czas-dostawy'  },
+    { id: 'wk-wh1-k2',  warehouseId: 'wh1', kpiId: 'kpi-wypeln-mag'    },
+    { id: 'wk-wh1-k3',  warehouseId: 'wh1', kpiId: 'kpi-bledy-komp'    },
+    { id: 'wk-wh1-k4',  warehouseId: 'wh1', kpiId: 'kpi-rotacja-pal'   },
+    { id: 'wk-wh1-k5',  warehouseId: 'wh1', kpiId: 'kpi-terminowosc'   },
+    { id: 'wk-wh1-k6',  warehouseId: 'wh1', kpiId: 'kpi-koszty-km'     },
+    { id: 'wk-wh1-k7',  warehouseId: 'wh1', kpiId: 'kpi-uszkodzenia'   },
+    { id: 'wk-wh1-k8',  warehouseId: 'wh1', kpiId: 'kpi-produktywnosc' },
+    { id: 'wk-wh2-k1',  warehouseId: 'wh2', kpiId: 'kpi-czas-dostawy'  },
+    { id: 'wk-wh2-k2',  warehouseId: 'wh2', kpiId: 'kpi-wypeln-mag'    },
+    { id: 'wk-wh2-k4',  warehouseId: 'wh2', kpiId: 'kpi-rotacja-pal'   },
+    { id: 'wk-wh2-k5',  warehouseId: 'wh2', kpiId: 'kpi-terminowosc'   },
+    { id: 'wk-wh2-k8',  warehouseId: 'wh2', kpiId: 'kpi-produktywnosc' },
+    { id: 'wk-wh2-k9',  warehouseId: 'wh2', kpiId: 'kpi-obrot-tow'     },
+    { id: 'wk-wh2-k10', warehouseId: 'wh2', kpiId: 'kpi-satysfak-kl'   },
+    { id: 'wk-wh3-k2',  warehouseId: 'wh3', kpiId: 'kpi-wypeln-mag'    },
+    { id: 'wk-wh3-k4',  warehouseId: 'wh3', kpiId: 'kpi-rotacja-pal'   },
+    { id: 'wk-wh3-k7',  warehouseId: 'wh3', kpiId: 'kpi-uszkodzenia'   },
+    { id: 'wk-wh4-k2',  warehouseId: 'wh4', kpiId: 'kpi-wypeln-mag'    },
+    { id: 'wk-wh4-k5',  warehouseId: 'wh4', kpiId: 'kpi-terminowosc'   },
+  ];
+  await adapter.putMany(STORES.WAREHOUSE_KPIS, warehouseKpis);
+
+  // --- KPI values (weekly entries for Dec 2025 + Jan–Feb 2026) ---
+  const kpiValues = [];
+  let kpiValIdx = 0;
+
+  // Define weekly dates to fill (Mondays)
+  const kpiDates = [
+    '2025-12-01','2025-12-08','2025-12-15','2025-12-22','2025-12-29',
+    '2026-01-05','2026-01-12','2026-01-19','2026-01-26',
+    '2026-02-02','2026-02-09',
+  ];
+
+  // Baseline values and weekly drift for each KPI
+  const kpiProfiles = {
+    'kpi-czas-dostawy':  { base: 2.1, drift: 0.08,  min: 1.0,  max: 5.0  },
+    'kpi-wypeln-mag':    { base: 72,   drift: 1.5,   min: 40,   max: 99   },
+    'kpi-bledy-komp':    { base: 1.8,  drift: 0.2,   min: 0,    max: 8    },
+    'kpi-rotacja-pal':   { base: 4.2,  drift: 0.3,   min: 1,    max: 12   },
+    'kpi-terminowosc':   { base: 94,   drift: 1.2,   min: 70,   max: 100  },
+    'kpi-koszty-km':     { base: 1.85, drift: 0.05,  min: 1.0,  max: 4.0  },
+    'kpi-uszkodzenia':   { base: 3,    drift: 0.4,   min: 0,    max: 12   },
+    'kpi-produktywnosc': { base: 38,   drift: 2.0,   min: 20,   max: 60   },
+    'kpi-obrot-tow':     { base: 14,   drift: 1.0,   min: 5,    max: 40   },
+    'kpi-satysfak-kl':   { base: 7.8,  drift: 0.15,  min: 4,    max: 10   },
+  };
+
+  const kpiRng = seededRandom('indeka-kpi-2026');
+
+  for (const wk of warehouseKpis) {
+    const prof = kpiProfiles[wk.kpiId];
+    if (!prof) continue;
+    let val = prof.base + (kpiRng() - 0.5) * prof.drift * 2;
+    for (const date of kpiDates) {
+      val += (kpiRng() - 0.48) * prof.drift;
+      val = Math.max(prof.min, Math.min(prof.max, val));
+      const rounded = Math.round(val * 100) / 100;
+      kpiValues.push({
+        id: `kpiv-${++kpiValIdx}`,
+        warehouseId: wk.warehouseId,
+        kpiId: wk.kpiId,
+        date,
+        value: rounded,
+        contractorId: null,
+        createdAt: new Date(date).getTime(),
+      });
+    }
+  }
+  await adapter.putMany(STORES.KPI_VALUES, kpiValues);
 }
 
 // --- Service Definition Actions ---
@@ -824,20 +944,20 @@ export async function unassignKpiFromWarehouse(warehouseId, kpiId) {
 
 // --- KPI Value Actions ---
 
-export async function saveKpiValue(warehouseId, kpiId, date, value, contractorId = null) {
+export async function saveKpiValue(warehouseId, kpiId, date, value, contractorId = null, note = '') {
   const state = getState();
   const existing = state.kpiValues.find(
     v => v.warehouseId === warehouseId && v.kpiId === kpiId && v.date === date
       && (v.contractorId || null) === contractorId
   );
   if (existing) {
-    const updated = { ...existing, value, updatedAt: Date.now() };
+    const updated = { ...existing, value, note, updatedAt: Date.now() };
     await adapter.put(STORES.KPI_VALUES, updated);
     setState({
       kpiValues: state.kpiValues.map(v => v.id === existing.id ? updated : v),
     });
   } else {
-    const record = { id: generateId(), warehouseId, kpiId, date, value, contractorId, createdAt: Date.now() };
+    const record = { id: generateId(), warehouseId, kpiId, date, value, note, contractorId, createdAt: Date.now() };
     await adapter.put(STORES.KPI_VALUES, record);
     setState({ kpiValues: [...state.kpiValues, record] });
   }
