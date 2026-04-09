@@ -27,6 +27,18 @@ export function parsePrice(value) {
   return Math.round(n * 100) / 100;
 }
 
+/** Normalize declarative currency code (A-Z only), defaulting to PLN */
+export function normalizeCurrency(value) {
+  const cleaned = String(value || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (!cleaned) return 'PLN';
+  return cleaned;
+}
+
+/** Validate declarative currency code (3 to 5 uppercase letters) */
+export function isValidCurrency(value) {
+  return /^[A-Z]{3,5}$/.test(String(value || ''));
+}
+
 /** Validate ISO date string */
 export function isValidDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(Date.parse(value));

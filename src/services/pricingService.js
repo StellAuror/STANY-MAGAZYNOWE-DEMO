@@ -22,12 +22,13 @@ export const pricingService = {
   /**
    * Add a new price entry (new rate from a given date).
    */
-  async addPrice(contractorId, serviceId, effectiveFrom, pricePerUnit, userName) {
+  async addPrice(contractorId, serviceId, effectiveFrom, pricePerUnit, currency = 'PLN', userName) {
     const record = await addServicePrice({
       contractorId,
       serviceId,
       effectiveFrom,
       pricePerUnit,
+      currency,
     });
 
     await auditService.logChange({
@@ -38,6 +39,7 @@ export const pricingService = {
       diff: {
         effectiveFrom,
         pricePerUnit,
+        currency,
       },
     });
 
@@ -59,7 +61,9 @@ export const pricingService = {
       entityType: 'ServicePrice',
       entityKey: `${old?.contractorId}|${old?.serviceId}`,
       diff: {
-        before: old ? { effectiveFrom: old.effectiveFrom, pricePerUnit: old.pricePerUnit } : null,
+        before: old
+          ? { effectiveFrom: old.effectiveFrom, pricePerUnit: old.pricePerUnit, currency: old.currency || 'PLN' }
+          : null,
         after: updates,
       },
     });
@@ -84,13 +88,14 @@ export const pricingService = {
   /**
    * Add a new pallet price entry (new rate from a given date).
    */
-  async addPalletPrice(contractorId, palletTypeId, direction, effectiveFrom, pricePerUnit, userName) {
+  async addPalletPrice(contractorId, palletTypeId, direction, effectiveFrom, pricePerUnit, currency = 'PLN', userName) {
     const record = await addPalletPrice({
       contractorId,
       palletTypeId,
       direction,
       effectiveFrom,
       pricePerUnit,
+      currency,
     });
 
     await auditService.logChange({
@@ -101,6 +106,7 @@ export const pricingService = {
       diff: {
         effectiveFrom,
         pricePerUnit,
+        currency,
       },
     });
 
@@ -122,7 +128,9 @@ export const pricingService = {
       entityType: 'PalletPrice',
       entityKey: `${old?.contractorId}|${old?.palletTypeId}|${old?.direction}`,
       diff: {
-        before: old ? { effectiveFrom: old.effectiveFrom, pricePerUnit: old.pricePerUnit } : null,
+        before: old
+          ? { effectiveFrom: old.effectiveFrom, pricePerUnit: old.pricePerUnit, currency: old.currency || 'PLN' }
+          : null,
         after: updates,
       },
     });

@@ -5,6 +5,49 @@ import { today, parseISODate } from '../utils/date.js';
 import { auditService } from './auditService.js';
 import { pricingService } from './pricingService.js';
 
+function getCorrectionAmount(entry) {
+  if (entry && entry.amountCorrection != null) {
+    return Number(entry.amountCorrection) || 0;
+  }
+  const qty = Math.abs(Number(entry?.qty) || 0);
+  const manualPrice = Number(entry?.manualPrice) || 0;
+  return Math.round(qty * manualPrice * 100) / 100;
+}
+
+function getPalletFlowsByType(record) {
+  const flows = new Map();
+  if (!record?.services) return flows;
+
+  const ensure = (ptId) => {
+    if (!flows.has(ptId)) {
+      flows.set(ptId, { qtyIn: 0, qtyOut: 0, qtyCorr: 0 });
+    }
+    return flows.get(ptId);
+  };
+
+  for (const svc of record.services) {
+    if (!svc?.palletEntries) continue;
+    if (svc.serviceId === 'svc-pallets-in') {
+      for (const entry of svc.palletEntries) {
+        const row = ensure(entry.palletTypeId);
+        row.qtyIn += Number(entry.qty) || 0;
+      }
+    } else if (svc.serviceId === 'svc-pallets-out') {
+      for (const entry of svc.palletEntries) {
+        const row = ensure(entry.palletTypeId);
+        row.qtyOut += Number(entry.qty) || 0;
+      }
+    } else if (svc.serviceId === 'svc-pallets-correction') {
+      for (const entry of svc.palletEntries) {
+        const row = ensure(entry.palletTypeId);
+        row.qtyCorr += Number(entry.qty) || 0;
+      }
+    }
+  }
+
+  return flows;
+}
+
 /**
  * Calculate total stock for contractor in warehouse up to a given date.
  * Stan calkowity = suma wejść - wyjść for all days up to the specified date.
@@ -14,18 +57,10 @@ export function calculateTotalStock(contractorId, warehouseId, date) {
   const records = getDailyRecordsUpTo(contractorId, warehouseId, date || today());
   let total = 0;
   for (const r of records) {
-    if (r.services) {
-      r.services.forEach(svc => {
-        if (svc.serviceId === 'svc-pallets-in') {
-          if (svc.palletEntries) {
-            svc.palletEntries.forEach(entry => { total += entry.qty || 0; });
-          }
-        } else if (svc.serviceId === 'svc-pallets-out') {
-          if (svc.palletEntries) {
-            svc.palletEntries.forEach(entry => { total -= entry.qty || 0; });
-          }
-        }
-      });
+    const flows = getPalletFlowsByType(r);
+    for (const flow of flows.values()) {
+      const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+      total += flow.qtyIn - outForDiff;
     }
   }
   return total;
@@ -40,20 +75,11 @@ export function calculateStockByPalletType(contractorId, warehouseId, upToDate) 
   const stockMap = new Map();
   
   for (const r of records) {
-    if (r.services) {
-      r.services.forEach(svc => {
-        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => {
-            const current = stockMap.get(entry.palletTypeId) || 0;
-            stockMap.set(entry.palletTypeId, current + (entry.qty || 0));
-          });
-        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => {
-            const current = stockMap.get(entry.palletTypeId) || 0;
-            stockMap.set(entry.palletTypeId, current - (entry.qty || 0));
-          });
-        }
-      });
+    const flows = getPalletFlowsByType(r);
+    for (const [palletTypeId, flow] of flows.entries()) {
+      const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+      const current = stockMap.get(palletTypeId) || 0;
+      stockMap.set(palletTypeId, current + flow.qtyIn - outForDiff);
     }
   }
   
@@ -68,22 +94,14 @@ export function calculateDayBalance(contractorId, warehouseId, date) {
   const record = getDailyRecord(contractorId, warehouseId, date);
   if (!record || !record.services) return 0;
   
-  let palletsIn = 0;
-  let palletsOut = 0;
-  
-  record.services.forEach(svc => {
-    if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
-      svc.palletEntries.forEach(entry => {
-        palletsIn += entry.qty || 0;
-      });
-    } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
-      svc.palletEntries.forEach(entry => {
-        palletsOut += entry.qty || 0;
-      });
-    }
-  });
-  
-  return palletsIn - palletsOut;
+  let balance = 0;
+  const flows = getPalletFlowsByType(record);
+  for (const flow of flows.values()) {
+    const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+    balance += flow.qtyIn - outForDiff;
+  }
+
+  return balance;
 }
 
 /**
@@ -249,6 +267,19 @@ export function calculateDayRevenue(contractorId, warehouseId, date) {
           revenue += (entry.qty || 0) * price;
         });
       }
+    } else if (svc.serviceId === 'svc-pallets-correction') {
+      // Quantity correction is billed like pallet movements.
+      if (svc.palletEntries) {
+        svc.palletEntries.forEach(entry => {
+          const qty = Math.abs(entry.qty || 0);
+          if (qty <= 0) return;
+          const palletPrice = pricingService.getPalletPriceAtDate(contractorId, entry.palletTypeId, 'in', date);
+          const fallbackPrice = pricingService.getPriceAtDate(contractorId, 'svc-pallets-out', date)
+            || pricingService.getPriceAtDate(contractorId, 'svc-pallets-in', date);
+          const price = palletPrice > 0 ? palletPrice : fallbackPrice;
+          revenue += qty * price;
+        });
+      }
     }
   }
   
@@ -265,35 +296,41 @@ export function calculateStorageRevenue(contractorId, warehouseId, date) {
 
   // Check if there are any pallet movements this day
   let hasMovement = false;
+  let correctionAmount = 0;
   if (record && record.services) {
     hasMovement = record.services.some(s =>
-      (s.serviceId === 'svc-pallets-in' || s.serviceId === 'svc-pallets-out') &&
-      s.palletEntries && s.palletEntries.some(entry => (entry.qty || 0) > 0)
+      (s.serviceId === 'svc-pallets-in' || s.serviceId === 'svc-pallets-out' || s.serviceId === 'svc-pallets-correction') &&
+      s.palletEntries && s.palletEntries.some(entry => (entry.qty || 0) !== 0)
     );
+
+    record.services.forEach(s => {
+      if (s.serviceId === 'svc-pallets-correction' && s.palletEntries) {
+        s.palletEntries.forEach(entry => {
+          correctionAmount += getCorrectionAmount(entry);
+        });
+      }
+    });
   }
 
-  // If there are movements, no storage charge
-  if (hasMovement) return 0;
+  // If there are movements, base storage charge is 0.
+  if (hasMovement) return Math.round(correctionAmount * 100) / 100;
 
   // Calculate storage charge based on stock up to this date
   const records = getDailyRecordsUpTo(contractorId, warehouseId, date);
   let stock = 0;
   for (const r of records) {
-    if (r.services) {
-      r.services.forEach(svc => {
-        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => { stock += entry.qty || 0; });
-        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => { stock -= entry.qty || 0; });
-        }
-      });
+    const flows = getPalletFlowsByType(r);
+    for (const flow of flows.values()) {
+      const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+      stock += flow.qtyIn - outForDiff;
     }
   }
 
-  if (stock <= 0) return 0;
+  if (stock <= 0) return Math.round(correctionAmount * 100) / 100;
 
   const price = pricingService.getPriceAtDate(contractorId, 'svc-storage', date);
-  return stock * price;
+  const baseStorage = stock * price;
+  return Math.round((baseStorage + correctionAmount) * 100) / 100;
 }
 
 /**
@@ -308,6 +345,7 @@ export function calculateAdditionalServicesRevenue(contractorId, warehouseId, da
   for (const svc of record.services) {
     if (svc.serviceId !== 'svc-pallets-in' && 
         svc.serviceId !== 'svc-pallets-out' && 
+        svc.serviceId !== 'svc-pallets-correction' &&
         svc.serviceId !== 'svc-storage') {
       const price = pricingService.getPriceAtDate(contractorId, svc.serviceId, date);
       revenue += (svc.qty || 0) * price;
@@ -340,19 +378,10 @@ export function calculateAverage30DayStock(contractorId, warehouseId, date) {
   const stockByDate = new Map();
   
   for (const record of sortedRecords) {
-    // Calculate change for this day
-    if (record.services) {
-      for (const svc of record.services) {
-        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => {
-            runningStock += entry.qty || 0;
-          });
-        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
-          svc.palletEntries.forEach(entry => {
-            runningStock -= entry.qty || 0;
-          });
-        }
-      }
+    const flows = getPalletFlowsByType(record);
+    for (const flow of flows.values()) {
+      const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+      runningStock += flow.qtyIn - outForDiff;
     }
     stockByDate.set(record.date, runningStock);
   }
@@ -394,14 +423,10 @@ export function calculateStockTrend(contractorId, warehouseId, date) {
   let runningStock = 0;
   const stockByDate = new Map();
   for (const record of sortedRecords) {
-    if (record.services) {
-      for (const svc of record.services) {
-        if (svc.serviceId === 'svc-pallets-in' && svc.palletEntries) {
-          svc.palletEntries.forEach(e => { runningStock += e.qty || 0; });
-        } else if (svc.serviceId === 'svc-pallets-out' && svc.palletEntries) {
-          svc.palletEntries.forEach(e => { runningStock -= e.qty || 0; });
-        }
-      }
+    const flows = getPalletFlowsByType(record);
+    for (const flow of flows.values()) {
+      const outForDiff = flow.qtyCorr !== 0 ? flow.qtyCorr : flow.qtyOut;
+      runningStock += flow.qtyIn - outForDiff;
     }
     stockByDate.set(record.date, runningStock);
   }

@@ -952,6 +952,12 @@
   border-bottom: none;
 }
 
+.pallets-table__row--comments {
+  padding-top: 6px;
+  padding-bottom: 10px;
+  background: #fafafa;
+}
+
 .pallets-table__cell {
   display: flex;
   align-items: center;
@@ -987,6 +993,21 @@
 .pallets-table__value {
   font-family: var(--font-mono);
   font-size: 0.95rem;
+}
+
+.pallets-table__comment-input {
+  width: 100%;
+  max-width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+}
+
+.pallets-table__comment-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
 }
 
 .pallet-entry-input[type="number"] {

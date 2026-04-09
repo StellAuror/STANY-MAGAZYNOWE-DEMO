@@ -196,6 +196,20 @@ export function showMultiPrompt(title, fields) {
         labelEl.appendChild(input);
         labelEl.appendChild(document.createTextNode('\u00a0' + field.label));
         row.appendChild(labelEl);
+      } else if (field.type === 'select') {
+        row.appendChild(el('label', { className: 'dialog__label' }, field.label));
+        input = el('select', { className: 'dialog__input' });
+        const options = Array.isArray(field.options) ? field.options : [];
+        for (const option of options) {
+          const value = typeof option === 'string' ? option : option.value;
+          const label = typeof option === 'string' ? option : (option.label || option.value);
+          const opt = el('option', { value }, label);
+          if (String(field.defaultValue || '') === String(value)) {
+            opt.selected = true;
+          }
+          input.appendChild(opt);
+        }
+        row.appendChild(input);
       } else {
         row.appendChild(el('label', { className: 'dialog__label' }, field.label));
         input = el('input', {

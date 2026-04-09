@@ -1,4 +1,4 @@
-import { el, showPrompt, showMultiPrompt, showConfirm } from '../utils/dom.js';
+import { el, showPrompt, showMultiPrompt, showConfirm, showAlert } from '../utils/dom.js';
 import {
   getContractors, getServiceDefinitions, getContractorServices,
   getServicePrices, getContractorById, getPalletTypes, getPalletPrices,
@@ -7,6 +7,7 @@ import { toggleContractorService, openPriceEditor, openPalletPriceEditor, setSel
 import { getState } from '../store/store.js';
 import { formatUnit } from '../utils/format.js';
 import { formatDatePL } from '../utils/date.js';
+import { getServiceCategory, SERVICE_CATEGORIES, normalizeServiceCategory } from '../utils/serviceCategory.js';
 
 /**
  * View 2: Contractor services management.
@@ -55,14 +56,31 @@ export function ContractorServices() {
       const result = await showMultiPrompt('Nowa usługa', [
         { label: 'Nazwa usługi', key: 'name', required: true, placeholder: 'np. Transport' },
         { label: 'Jednostka miary', key: 'unit', defaultValue: 'PIECE', placeholder: 'PALLET, KM, HOUR, PIECE' },
+        {
+          label: 'Kategoria',
+          key: 'category',
+          type: 'select',
+          defaultValue: 'VASY',
+          options: [
+            { label: 'VASY', value: 'VASY' },
+            { label: 'TRANSPORT', value: 'TRANSPORT' },
+          ],
+        },
         { label: 'Opis (opcjonalnie)', key: 'description', placeholder: 'Krótki opis...' },
       ]);
       if (!result) return;
 
+      const category = normalizeServiceCategory(result.category, result.name);
+      if (![SERVICE_CATEGORIES.TRANSPORT, SERVICE_CATEGORIES.VASY].includes(category)) {
+        await showAlert('Nieprawidłowa kategoria. Wpisz TRANSPORT albo VASY.');
+        return;
+      }
+
       const newService = await addServiceDefinition(
         result.name.trim(),
         result.unit.trim().toUpperCase(),
-        (result.description || '').trim()
+        (result.description || '').trim(),
+        category
       );
 
       // Auto-enable for current contractor if one is selected
@@ -133,7 +151,7 @@ export function ContractorServices() {
         for (const p of prices) {
           const row = el('div', { className: 'price-history__row' });
           row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
-          row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/${formatUnit(def.unit)}`));
+          row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} ${p.currency || 'PLN'}/${formatUnit(def.unit)}`));
           priceHistory.appendChild(row);
         }
         item.appendChild(priceHistory);
@@ -159,8 +177,12 @@ export function ContractorServices() {
   });
 
   const PALLET_SERVICE_IDS = ['svc-pallets-in', 'svc-pallets-out', 'svc-pallets-correction', 'svc-storage'];
-  const transportDefs = enabledDefs.filter(def => /transport/i.test(def.name) && !PALLET_SERVICE_IDS.includes(def.id));
-  const vasyDefs = enabledDefs.filter(def => !/transport/i.test(def.name) && !PALLET_SERVICE_IDS.includes(def.id));
+  const transportDefs = enabledDefs.filter(def =>
+    !PALLET_SERVICE_IDS.includes(def.id) && getServiceCategory(def) === SERVICE_CATEGORIES.TRANSPORT
+  );
+  const vasyDefs = enabledDefs.filter(def =>
+    !PALLET_SERVICE_IDS.includes(def.id) && getServiceCategory(def) === SERVICE_CATEGORIES.VASY
+  );
 
   if (transportDefs.length > 0) {
     const section = el('div', { className: 'section mt-md' });
@@ -348,7 +370,7 @@ export function ContractorServices() {
           for (const p of pricesIn) {
             const row = el('div', { className: 'price-history__row' });
             row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
-            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/szt`));
+            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} ${p.currency || 'PLN'}/szt`));
             priceHistory.appendChild(row);
           }
         }
@@ -362,7 +384,7 @@ export function ContractorServices() {
           for (const p of pricesOut) {
             const row = el('div', { className: 'price-history__row' });
             row.appendChild(el('span', { className: 'price-history__date' }, `Od ${formatDatePL(p.effectiveFrom)}`));
-            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} zł/szt/dzień`));
+            row.appendChild(el('span', { className: 'price-history__price' }, `${p.pricePerUnit.toFixed(2)} ${p.currency || 'PLN'}/szt/dzień`));
             priceHistory.appendChild(row);
           }
         }

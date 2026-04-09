@@ -6,7 +6,7 @@ import {
 import { closePalletPriceEditor } from '../store/actions.js';
 import { pricingService } from '../services/pricingService.js';
 import { formatDatePL, today } from '../utils/date.js';
-import { isValidPrice, parsePrice, isValidDate } from '../utils/validators.js';
+import { parsePrice, isValidDate, normalizeCurrency, isValidCurrency } from '../utils/validators.js';
 
 /**
  * Modal for editing pallet price history for a contractor and pallet type.
@@ -75,27 +75,41 @@ export function PalletPriceEditor() {
       row.appendChild(el('span', { className: 'price-history__date' },
         `Od ${formatDatePL(p.effectiveFrom)}`));
       row.appendChild(el('span', { className: 'price-history__price' },
-        `${p.pricePerUnit.toFixed(2)} zł`));
+        `${p.pricePerUnit.toFixed(2)} ${p.currency || 'PLN'}`));
 
       // Edit button
       const editBtn = el('button', {
         className: 'btn-secondary btn-small',
         onClick: async () => {
           const newPrice = await showPrompt(`Nowa stawka (aktualna: ${p.pricePerUnit.toFixed(2)}):`, String(p.pricePerUnit.toFixed(2)));
-          if (newPrice !== null) {
-            const parsed = parsePrice(newPrice);
-            if (parsed !== null) {
-              await pricingService.updatePalletPrice(p.id, {
-                contractorId,
-                palletTypeId,
-                direction,
-                pricePerUnit: parsed,
-              }, userName);
-              closePalletPriceEditor();
-            } else {
-              await showAlert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
-            }
+          if (newPrice === null) return;
+
+          const parsed = parsePrice(newPrice);
+          if (parsed === null) {
+            await showAlert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
+            return;
           }
+
+          const newCurrencyRaw = await showPrompt(
+            `Waluta (aktualna: ${p.currency || 'PLN'}):`,
+            p.currency || 'PLN'
+          );
+          if (newCurrencyRaw === null) return;
+
+          const currency = normalizeCurrency(newCurrencyRaw);
+          if (!isValidCurrency(currency)) {
+            await showAlert('Nieprawidłowa waluta. Użyj 3-5 liter (A-Z), np. PLN lub EUR.');
+            return;
+          }
+
+          await pricingService.updatePalletPrice(p.id, {
+            contractorId,
+            palletTypeId,
+            direction,
+            pricePerUnit: parsed,
+            currency,
+          }, userName);
+          closePalletPriceEditor();
         },
       }, 'Edytuj');
       row.appendChild(editBtn);
@@ -129,14 +143,28 @@ export function PalletPriceEditor() {
     style: { width: '100px' },
   });
   addForm.appendChild(priceInput);
+
+  addForm.appendChild(el('label', { style: { fontSize: '0.85rem' } }, 'Waluta:'));
+  const currencyInput = el('input', {
+    type: 'text',
+    value: 'PLN',
+    maxLength: 5,
+    placeholder: 'PLN',
+    style: { width: '80px', textTransform: 'uppercase' },
+    onInput: (e) => {
+      e.target.value = normalizeCurrency(e.target.value);
+    },
+  });
+  addForm.appendChild(currencyInput);
   addForm.appendChild(el('span', { className: 'text-secondary', style: { fontSize: '0.85rem' } },
-    `zł/szt`));
+    `/szt`));
 
   const addBtn = el('button', {
     className: 'btn-primary btn-small',
     onClick: async () => {
       const effectiveFrom = dateInput.value;
       const priceVal = priceInput.value;
+      const currency = normalizeCurrency(currencyInput.value);
 
       if (!isValidDate(effectiveFrom)) {
         await showAlert('Wprowadź prawidłową datę.');
@@ -149,7 +177,12 @@ export function PalletPriceEditor() {
         return;
       }
 
-      await pricingService.addPalletPrice(contractorId, palletTypeId, direction, effectiveFrom, parsed, userName);
+      if (!isValidCurrency(currency)) {
+        await showAlert('Wprowadź prawidłową walutę (3-5 liter, np. PLN).');
+        return;
+      }
+
+      await pricingService.addPalletPrice(contractorId, palletTypeId, direction, effectiveFrom, parsed, currency, userName);
       closePalletPriceEditor();
     },
   }, 'Dodaj');

@@ -9,6 +9,7 @@ import { saveInventory, sumEntries, getRecordHistory, calculateStockByPalletType
 import { pricingService } from '../services/pricingService.js';
 import { formatDatePL, formatTimestamp, today } from '../utils/date.js';
 import { isValidQty, parseQty } from '../utils/validators.js';
+import { isTransportService } from '../utils/serviceCategory.js';
 
 /** Returns hours elapsed since the start of ISO date string (midnight local time). */
 function hoursSinceDate(isoDate) {
@@ -33,8 +34,9 @@ export function InventoryModal() {
   const enabledServices = getEnabledServices(contractorId);
   const palletTypes = getPalletTypes();
 
-  // Local state: 
-  // - For pallets: map of palletTypeId -> { qtyIn, qtyOut, qtyCorr, noteIn, noteOut, noteCorr, corrPrice }
+  // Local state:
+  // - For pallets: map of palletTypeId ->
+  //   { qtyIn, qtyOut, qtyCorr, corrAmount, note }
   // - For other services: map of serviceId -> { qty, note }
   const palletData = {};
   const servicesData = {};
@@ -42,7 +44,13 @@ export function InventoryModal() {
   // Initialize pallet data
   const acceptedPalletTypes = contractor?.acceptedPalletTypes || [];
   acceptedPalletTypes.forEach(palletTypeId => {
-    palletData[palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
+    palletData[palletTypeId] = {
+      qtyIn: 0,
+      qtyOut: 0,
+      qtyCorr: 0,
+      corrAmount: 0,
+      note: '',
+    };
   });
   
   // Load existing data
@@ -51,27 +59,53 @@ export function InventoryModal() {
       if (s.serviceId === 'svc-pallets-in' && s.palletEntries) {
         s.palletEntries.forEach(entry => {
           if (!palletData[entry.palletTypeId]) {
-            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
+            palletData[entry.palletTypeId] = {
+              qtyIn: 0,
+              qtyOut: 0,
+              qtyCorr: 0,
+              corrAmount: 0,
+              note: '',
+            };
           }
           palletData[entry.palletTypeId].qtyIn = entry.qty || 0;
-          palletData[entry.palletTypeId].noteIn = entry.note || '';
+          if (!palletData[entry.palletTypeId].note) {
+            palletData[entry.palletTypeId].note = entry.note || '';
+          }
         });
       } else if (s.serviceId === 'svc-pallets-out' && s.palletEntries) {
         s.palletEntries.forEach(entry => {
           if (!palletData[entry.palletTypeId]) {
-            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
+            palletData[entry.palletTypeId] = {
+              qtyIn: 0,
+              qtyOut: 0,
+              qtyCorr: 0,
+              corrAmount: 0,
+              note: '',
+            };
           }
           palletData[entry.palletTypeId].qtyOut = entry.qty || 0;
-          palletData[entry.palletTypeId].noteOut = entry.note || '';
+          if (!palletData[entry.palletTypeId].note) {
+            palletData[entry.palletTypeId].note = entry.note || '';
+          }
         });
       } else if (s.serviceId === 'svc-pallets-correction' && s.palletEntries) {
         s.palletEntries.forEach(entry => {
           if (!palletData[entry.palletTypeId]) {
-            palletData[entry.palletTypeId] = { qtyIn: 0, qtyOut: 0, qtyCorr: 0, noteIn: '', noteOut: '', noteCorr: '', corrPrice: 0 };
+            palletData[entry.palletTypeId] = {
+              qtyIn: 0,
+              qtyOut: 0,
+              qtyCorr: 0,
+              corrAmount: 0,
+              note: '',
+            };
           }
           palletData[entry.palletTypeId].qtyCorr = entry.qty || 0;
-          palletData[entry.palletTypeId].noteCorr = entry.note || '';
-          palletData[entry.palletTypeId].corrPrice = entry.manualPrice || 0;
+          if (!palletData[entry.palletTypeId].note) {
+            palletData[entry.palletTypeId].note = entry.note || entry.amountNote || '';
+          }
+          palletData[entry.palletTypeId].corrAmount = entry.amountCorrection != null
+            ? Number(entry.amountCorrection) || 0
+            : Math.round(Math.abs(entry.qty || 0) * (Number(entry.manualPrice) || 0) * 100) / 100;
         });
       } else if (s.serviceId !== 'svc-pallets-in' && s.serviceId !== 'svc-pallets-out' && s.serviceId !== 'svc-pallets-correction') {
         servicesData[s.serviceId] = { qty: s.qty || 0, note: s.note || '' };
@@ -214,7 +248,7 @@ export function InventoryModal() {
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Wejścia'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Wyjścia'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Korekta'));
-      headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Cena kor.'));
+      headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Kor. kwoty'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Różnica'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Obrót'));
       headerRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--qty' }, 'Stan'));
@@ -290,27 +324,27 @@ export function InventoryModal() {
         corrCell.appendChild(corrInput);
         row.appendChild(corrCell);
 
-        // Cena korekty input
+        // Korekta kwoty input (independent from quantity correction)
         const corrPriceCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
         const corrPriceInput = el('input', {
           type: 'number',
-          min: '0',
           step: '0.01',
-          value: String(data.corrPrice),
-          placeholder: '0.00',
+          value: String(data.corrAmount),
+          placeholder: '+/-0.00',
           className: 'pallets-table__input',
           style: { background: '#fefce8', borderColor: '#d97706', width: '72px' },
           onInput: (e) => {
-            palletData[palletTypeId].corrPrice = parseFloat(e.target.value) || 0;
+            palletData[palletTypeId].corrAmount = parseFloat(e.target.value) || 0;
           },
         });
         corrPriceCell.appendChild(corrPriceInput);
-        corrPriceCell.appendChild(el('span', { style: { fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginLeft: '2px' } }, 'zł'));
+        corrPriceCell.appendChild(el('span', { style: { fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginLeft: '2px' } }, 'PLN'));
         row.appendChild(corrPriceCell);
         
-        // Różnica (calculated: in - out, correction NOT included)
+        // Różnica = wejścia - (korekta, jeśli podana; w przeciwnym razie wyjścia)
         const diffCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
-        const diff = data.qtyIn - data.qtyOut;
+        const outForDiff = data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut;
+        const diff = data.qtyIn - outForDiff;
         const diffDisplay = el('span', { 
           className: 'pallets-table__value',
           style: { 
@@ -322,9 +356,9 @@ export function InventoryModal() {
         diffCell.appendChild(diffDisplay);
         row.appendChild(diffCell);
 
-        // Obrót (calculated: in + corr if corr!=0, else in + out)
+        // Obrót = wejścia + wyjścia
         const obrotCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty' });
-        const obrot = data.qtyIn + (data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut);
+        const obrot = data.qtyIn + data.qtyOut;
         const obrotDisplay = el('span', {
           className: 'pallets-table__value',
           style: { fontWeight: '600', color: obrot > 0 ? '#2563eb' : 'var(--color-text-secondary)' },
@@ -345,6 +379,22 @@ export function InventoryModal() {
         row.appendChild(stockCell);
         
         palletsTable.appendChild(row);
+
+        // Comments row (single comment per pallet position)
+        const commentsRow = el('div', { className: 'pallets-table__row pallets-table__row--comments' });
+        commentsRow.appendChild(el('div', { className: 'pallets-table__cell pallets-table__cell--label' }, 'Komentarz'));
+
+        const noteCell = el('div', { className: 'pallets-table__cell pallets-table__cell--qty', style: { gridColumn: 'span 7' } });
+        noteCell.appendChild(el('input', {
+          type: 'text',
+          value: data.note,
+          placeholder: 'Komentarz dla tej palety',
+          className: 'pallets-table__comment-input',
+          style: { maxWidth: '100%' },
+          onInput: (e) => { palletData[palletTypeId].note = e.target.value; },
+        }));
+        commentsRow.appendChild(noteCell);
+        palletsTable.appendChild(commentsRow);
       });
       
       palletsSection.appendChild(palletsTable);
@@ -352,8 +402,9 @@ export function InventoryModal() {
       // Helper function to update calculated cells
       function updatePalletRow(palletTypeId) {
         const data = palletData[palletTypeId];
-        const diff = data.qtyIn - data.qtyOut;
-        const obrot = data.qtyIn + (data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut);
+        const outForDiff = data.qtyCorr !== 0 ? data.qtyCorr : data.qtyOut;
+        const diff = data.qtyIn - outForDiff;
+        const obrot = data.qtyIn + data.qtyOut;
         const previousStock = stockByType.get(palletTypeId) || 0;
         const newStock = previousStock + diff;
         
@@ -387,7 +438,7 @@ export function InventoryModal() {
     svc.serviceId !== 'svc-pallets-in' && svc.serviceId !== 'svc-pallets-out'
   );
 
-  const isTransport = (svc) => /transport/i.test(svc.definition.name);
+  const isTransport = (svc) => isTransportService(svc.definition);
 
   const buildServiceRows = (services, container) => {
     services.forEach(svc => {
@@ -565,18 +616,18 @@ export function InventoryModal() {
         const entriesOut = [];
         
         for (const [palletTypeId, data] of Object.entries(palletData)) {
-          if (data.qtyIn > 0 || data.noteIn) {
+          if (data.qtyIn > 0) {
             entriesIn.push({
               palletTypeId,
               qty: data.qtyIn,
-              note: data.noteIn
+              note: data.note
             });
           }
-          if (data.qtyOut > 0 || data.noteOut) {
+          if (data.qtyOut > 0) {
             entriesOut.push({
               palletTypeId,
               qty: data.qtyOut,
-              note: data.noteOut
+              note: data.note
             });
           }
         }
@@ -598,12 +649,13 @@ export function InventoryModal() {
         // Corrections
         const entriesCorr = [];
         for (const [palletTypeId, data] of Object.entries(palletData)) {
-          if (data.qtyCorr !== 0 || data.noteCorr) {
+          if (data.qtyCorr !== 0 || data.note || data.corrAmount !== 0) {
             entriesCorr.push({
               palletTypeId,
               qty: data.qtyCorr,
-              note: data.noteCorr,
-              manualPrice: data.corrPrice,
+              note: data.note,
+              amountCorrection: data.corrAmount,
+              amountNote: data.note,
             });
           }
         }

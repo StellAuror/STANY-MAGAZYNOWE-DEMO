@@ -7,7 +7,7 @@ import { closePriceEditor } from '../store/actions.js';
 import { pricingService } from '../services/pricingService.js';
 import { formatDatePL, today } from '../utils/date.js';
 import { formatUnit } from '../utils/format.js';
-import { isValidPrice, parsePrice, isValidDate } from '../utils/validators.js';
+import { parsePrice, isValidDate, normalizeCurrency, isValidCurrency } from '../utils/validators.js';
 
 /**
  * Modal for editing price history of a service for a contractor.
@@ -59,26 +59,40 @@ export function PriceHistoryEditor() {
       row.appendChild(el('span', { className: 'price-history__date' },
         `Od ${formatDatePL(p.effectiveFrom)}`));
       row.appendChild(el('span', { className: 'price-history__price' },
-        `${p.pricePerUnit.toFixed(2)} zł`));
+        `${p.pricePerUnit.toFixed(2)} ${p.currency || 'PLN'}`));
 
       // Edit button
       const editBtn = el('button', {
         className: 'btn-secondary btn-small',
         onClick: async () => {
           const newPrice = await showPrompt(`Nowa stawka (aktualna: ${p.pricePerUnit.toFixed(2)}):`, String(p.pricePerUnit.toFixed(2)));
-          if (newPrice !== null) {
-            const parsed = parsePrice(newPrice);
-            if (parsed !== null) {
-              await pricingService.updatePrice(p.id, {
-                contractorId,
-                serviceId,
-                pricePerUnit: parsed,
-              }, userName);
-              closePriceEditor();
-            } else {
-              await showAlert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
-            }
+          if (newPrice === null) return;
+
+          const parsed = parsePrice(newPrice);
+          if (parsed === null) {
+            await showAlert('Nieprawidłowa wartość. Wprowadź liczbę >= 0.');
+            return;
           }
+
+          const newCurrencyRaw = await showPrompt(
+            `Waluta (aktualna: ${p.currency || 'PLN'}):`,
+            p.currency || 'PLN'
+          );
+          if (newCurrencyRaw === null) return;
+
+          const currency = normalizeCurrency(newCurrencyRaw);
+          if (!isValidCurrency(currency)) {
+            await showAlert('Nieprawidłowa waluta. Użyj 3-5 liter (A-Z), np. PLN lub EUR.');
+            return;
+          }
+
+          await pricingService.updatePrice(p.id, {
+            contractorId,
+            serviceId,
+            pricePerUnit: parsed,
+            currency,
+          }, userName);
+          closePriceEditor();
         },
       }, 'Edytuj');
       row.appendChild(editBtn);
@@ -112,14 +126,28 @@ export function PriceHistoryEditor() {
     style: { width: '100px' },
   });
   addForm.appendChild(priceInput);
+
+  addForm.appendChild(el('label', { style: { fontSize: '0.85rem' } }, 'Waluta:'));
+  const currencyInput = el('input', {
+    type: 'text',
+    value: 'PLN',
+    maxLength: 5,
+    placeholder: 'PLN',
+    style: { width: '80px', textTransform: 'uppercase' },
+    onInput: (e) => {
+      e.target.value = normalizeCurrency(e.target.value);
+    },
+  });
+  addForm.appendChild(currencyInput);
   addForm.appendChild(el('span', { className: 'text-secondary', style: { fontSize: '0.85rem' } },
-    `zł/${formatUnit(serviceDef?.unit || '')}`));
+    `/${formatUnit(serviceDef?.unit || '')}`));
 
   const addBtn = el('button', {
     className: 'btn-primary btn-small',
     onClick: async () => {
       const effectiveFrom = dateInput.value;
       const priceVal = priceInput.value;
+      const currency = normalizeCurrency(currencyInput.value);
 
       if (!isValidDate(effectiveFrom)) {
         await showAlert('Wprowadź prawidłową datę.');
@@ -132,7 +160,12 @@ export function PriceHistoryEditor() {
         return;
       }
 
-      await pricingService.addPrice(contractorId, serviceId, effectiveFrom, parsed, userName);
+      if (!isValidCurrency(currency)) {
+        await showAlert('Wprowadź prawidłową walutę (3-5 liter, np. PLN).');
+        return;
+      }
+
+      await pricingService.addPrice(contractorId, serviceId, effectiveFrom, parsed, currency, userName);
       closePriceEditor();
     },
   }, 'Dodaj');

@@ -3,6 +3,23 @@ import { getEnabledServices, getContractorById, getContractors } from '../store/
 import { getDaysInMonth } from '../utils/date.js';
 import { pricingService } from './pricingService.js';
 import { sumEntries, calculateTotalStock, calculateStockByPalletType } from './inventoryService.js';
+import { isTransportService } from '../utils/serviceCategory.js';
+
+function getCorrectionAmount(entry) {
+  if (entry && entry.amountCorrection != null) {
+    return Number(entry.amountCorrection) || 0;
+  }
+  const qty = Math.abs(Number(entry?.qty) || 0);
+  const manualPrice = Number(entry?.manualPrice) || 0;
+  return Math.round(qty * manualPrice * 100) / 100;
+}
+
+function getCorrectionQtyPrice(contractorId, palletTypeId, day) {
+  const palletPrice = pricingService.getPalletPriceAtDate(contractorId, palletTypeId, 'in', day);
+  const fallbackPrice = pricingService.getPriceAtDate(contractorId, 'svc-pallets-out', day)
+    || pricingService.getPriceAtDate(contractorId, 'svc-pallets-in', day);
+  return palletPrice > 0 ? palletPrice : fallbackPrice;
+}
 
 /**
  * Generate monthly summary for given filters.
@@ -105,6 +122,7 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
       });
 
       const warehousesWithMovement = new Set();
+      let dayStorageCorrection = 0;
 
       for (const rec of dayRecords) {
         if (!rec.services) continue;
@@ -126,12 +144,16 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
               }
             }
           } else if (svc.serviceId === 'svc-pallets-correction') {
-            // Corrections: manual price stored per entry
+            // Quantity correction is billed like movements.
             if (svc.palletEntries) {
               for (const pe of svc.palletEntries) {
-                const qty = pe.qty || 0;
-                const manualPrice = pe.manualPrice || 0;
-                if (qty !== 0) dayRevenue += Math.abs(qty) * manualPrice;
+                const qty = Math.abs(pe.qty || 0);
+                if (qty > 0) {
+                  hasMovement = true;
+                  const price = getCorrectionQtyPrice(contractorId, pe.palletTypeId, day);
+                  dayRevenue += qty * price;
+                }
+                dayStorageCorrection += getCorrectionAmount(pe);
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {
@@ -159,6 +181,8 @@ export function getDailyChartData(month, contractorIds, warehouseId) {
           dayRevenue += qty * storagePrice;
         }
       }
+
+      dayRevenue += dayStorageCorrection;
     }
 
     data.push({
@@ -200,6 +224,7 @@ export function getTop5ByRevenue(month, warehouseId) {
 
       // Track which warehouses have movement this day
       const warehousesWithMovement = new Set();
+      let dayStorageCorrection = 0;
 
       for (const rec of dayRecords) {
         if (!rec.services) continue;
@@ -222,12 +247,16 @@ export function getTop5ByRevenue(month, warehouseId) {
               }
             }
           } else if (svc.serviceId === 'svc-pallets-correction') {
-            // Corrections: manual price per entry
+            // Quantity correction is billed like movements.
             if (svc.palletEntries) {
               for (const pe of svc.palletEntries) {
-                const qty = pe.qty || 0;
-                const manualPrice = pe.manualPrice || 0;
-                if (qty !== 0) movementRevenue += Math.abs(qty) * manualPrice;
+                const qty = Math.abs(pe.qty || 0);
+                if (qty > 0) {
+                  hasMovement = true;
+                  const price = getCorrectionQtyPrice(contractor.id, pe.palletTypeId, day);
+                  movementRevenue += qty * price;
+                }
+                dayStorageCorrection += getCorrectionAmount(pe);
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {
@@ -257,6 +286,8 @@ export function getTop5ByRevenue(month, warehouseId) {
           storageRevenue += qty * storagePrice;
         }
       }
+
+      storageRevenue += dayStorageCorrection;
     }
 
     const totalRevenue = movementRevenue + additionalRevenue + storageRevenue;
@@ -328,21 +359,35 @@ export function getContractorDailyReport(month, contractorId, warehouseId) {
             }
           }
         } else if (svc.serviceId === 'svc-pallets-correction') {
-          // Corrections with manual price
+          // Quantity correction is billed like movements, amount correction affects storage value.
           if (svc.palletEntries) {
             for (const pe of svc.palletEntries) {
-              const qty = pe.qty || 0;
-              const manualPrice = pe.manualPrice || 0;
-              if (qty !== 0) {
-                const total = Math.round(Math.abs(qty) * manualPrice * 100) / 100;
+              const qty = Math.abs(pe.qty || 0);
+              if (qty > 0) {
+                hasMovement = true;
+                const price = getCorrectionQtyPrice(contractorId, pe.palletTypeId, day);
+                const total = Math.round(qty * price * 100) / 100;
                 const pt = state.palletTypes?.find(p => p.id === pe.palletTypeId);
                 lines.push({
                   category: 'Ruchy magazynowe',
-                  name: `Korekta${pt ? ' — ' + pt.name : ''}`,
+                  name: `Korekta ilości${pt ? ' — ' + pt.name : ''}`,
                   qty,
                   unit: 'szt',
-                  price: manualPrice,
+                  price,
                   total,
+                });
+              }
+
+              const amountCorrection = getCorrectionAmount(pe);
+              if (amountCorrection !== 0) {
+                const pt = state.palletTypes?.find(p => p.id === pe.palletTypeId);
+                lines.push({
+                  category: 'Stan magazynowy',
+                  name: `Korekta kwoty${pt ? ' — ' + pt.name : ''}`,
+                  qty: 1,
+                  unit: 'korekta',
+                  price: amountCorrection,
+                  total: amountCorrection,
                 });
               }
             }
@@ -354,7 +399,7 @@ export function getContractorDailyReport(month, contractorId, warehouseId) {
             const total = Math.round(qty * price * 100) / 100;
             const enabledSvc = getEnabledServices(contractorId).find(s => s.serviceId === svc.serviceId);
             const name = enabledSvc?.definition?.name || svc.serviceId;
-            const isTransport = /transport/i.test(name);
+            const isTransport = isTransportService(enabledSvc?.definition);
             lines.push({
               category: isTransport ? 'Transport' : 'VASY',
               name,
@@ -446,9 +491,12 @@ export function getTop5MoMGrowth(month, warehouseId) {
           } else if (svc.serviceId === 'svc-pallets-correction') {
             if (svc.palletEntries) {
               for (const pe of svc.palletEntries) {
-                const qty = pe.qty || 0;
-                const manualPrice = pe.manualPrice || 0;
-                if (qty !== 0) revenue += Math.abs(qty) * manualPrice;
+                const qty = Math.abs(pe.qty || 0);
+                if (qty > 0) {
+                  const price = getCorrectionQtyPrice(contractorId, pe.palletTypeId, day);
+                  revenue += qty * price;
+                }
+                revenue += getCorrectionAmount(pe);
               }
             }
           } else if (svc.serviceId !== 'svc-storage') {

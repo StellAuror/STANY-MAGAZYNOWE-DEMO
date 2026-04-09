@@ -77,15 +77,25 @@ function formatTimestampPL(ts) {
 function describeDiff(action, diff) {
   if (!diff) return '';
 
+  const resolveCurrency = () => {
+    if (diff.currency) return String(diff.currency).toUpperCase();
+    if (diff.after?.currency) return String(diff.after.currency).toUpperCase();
+    if (diff.before?.currency) return String(diff.before.currency).toUpperCase();
+    return 'PLN';
+  };
+
   if (action === 'ADD_PRICE' || action === 'ADD_PALLET_PRICE') {
-    const price = diff.pricePerUnit != null ? Number(diff.pricePerUnit).toFixed(2) + ' zl' : '';
+    const currency = resolveCurrency();
+    const price = diff.pricePerUnit != null ? `${Number(diff.pricePerUnit).toFixed(2)} ${currency}` : '';
     const from = diff.effectiveFrom || '';
     return price && from ? `${price} od ${formatDatePL(from)}` : price || JSON.stringify(diff);
   }
 
   if (action === 'UPDATE_PRICE' || action === 'UPDATE_PALLET_PRICE') {
-    const price = diff.pricePerUnit != null ? Number(diff.pricePerUnit).toFixed(2) + ' zl' : '';
-    const from = diff.effectiveFrom || '';
+    const currency = resolveCurrency();
+    const priceValue = diff.pricePerUnit ?? diff.after?.pricePerUnit ?? diff.before?.pricePerUnit;
+    const price = priceValue != null ? `${Number(priceValue).toFixed(2)} ${currency}` : '';
+    const from = diff.effectiveFrom || diff.after?.effectiveFrom || diff.before?.effectiveFrom || '';
     return price && from ? `${price} od ${formatDatePL(from)}` : price || JSON.stringify(diff);
   }
 

@@ -2,6 +2,7 @@ import { getState, setState } from './store.js';
 import { STORES } from '../adapters/dataAdapter.js';
 import { generateId } from '../utils/format.js';
 import { today } from '../utils/date.js';
+import { getServiceCategory, normalizeServiceCategory } from '../utils/serviceCategory.js';
 
 /** @type {import('../adapters/indexedDbAdapter.js').default} */
 let adapter = null;
@@ -148,15 +149,56 @@ export async function loadAllData() {
     await Promise.all(migratedContractors.map(c => adapter.put(STORES.CONTRACTORS, c)));
   }
 
+  // Migration: ensure service definitions have explicit category
+  const migratedServiceDefinitions = serviceDefinitions.map(sd => {
+    const normalizedCategory = getServiceCategory(sd);
+    if (sd.category === normalizedCategory) return sd;
+    return { ...sd, category: normalizedCategory };
+  });
+  const serviceDefsNeedMigration = migratedServiceDefinitions.some((sd, i) =>
+    sd.category !== serviceDefinitions[i]?.category
+  );
+  if (serviceDefsNeedMigration) {
+    await Promise.all(migratedServiceDefinitions.map(sd => adapter.put(STORES.SERVICE_DEFINITIONS, sd)));
+  }
+
   const settings = await adapter.get(STORES.SETTINGS, 'currentUser');
+
+  // Migration: ensure every price record has a declarative currency (default PLN)
+  const servicePricesWithCurrency = servicePrices.map(p => {
+    if (typeof p.currency === 'string' && p.currency.trim()) {
+      return { ...p, currency: p.currency.toUpperCase() };
+    }
+    return { ...p, currency: 'PLN' };
+  });
+  const palletPricesWithCurrency = palletPrices.map(p => {
+    if (typeof p.currency === 'string' && p.currency.trim()) {
+      return { ...p, currency: p.currency.toUpperCase() };
+    }
+    return { ...p, currency: 'PLN' };
+  });
+
+  const servicePricesNeedMigration = servicePricesWithCurrency.some((p, i) =>
+    p.currency !== (servicePrices[i]?.currency || '').toUpperCase()
+  );
+  const palletPricesNeedMigration = palletPricesWithCurrency.some((p, i) =>
+    p.currency !== (palletPrices[i]?.currency || '').toUpperCase()
+  );
+
+  if (servicePricesNeedMigration) {
+    await Promise.all(servicePricesWithCurrency.map(p => adapter.put(STORES.SERVICE_PRICES, p)));
+  }
+  if (palletPricesNeedMigration) {
+    await Promise.all(palletPricesWithCurrency.map(p => adapter.put(STORES.PALLET_PRICES, p)));
+  }
 
   setState({
     warehouses,
     contractors: migratedContractors,
-    serviceDefinitions,
+    serviceDefinitions: migratedServiceDefinitions,
     contractorServices,
-    servicePrices,
-    palletPrices,
+    servicePrices: servicePricesWithCurrency,
+    palletPrices: palletPricesWithCurrency,
     dailyInventory,
     palletTypes,
     auditLog,
@@ -284,7 +326,13 @@ export async function enableServiceForContractor(contractorId, serviceId) {
 // --- Service Price Actions ---
 
 export async function addServicePrice(priceRecord) {
-  const record = { id: generateId(), ...priceRecord, createdAt: Date.now(), updatedAt: Date.now() };
+  const record = {
+    id: generateId(),
+    ...priceRecord,
+    currency: (priceRecord.currency || 'PLN').toUpperCase(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
   await adapter.put(STORES.SERVICE_PRICES, record);
   setState({ servicePrices: [...getState().servicePrices, record] });
   return record;
@@ -292,7 +340,16 @@ export async function addServicePrice(priceRecord) {
 
 export async function updateServicePrice(id, updates) {
   const prices = getState().servicePrices.map(p =>
-    p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
+    p.id === id
+      ? {
+        ...p,
+        ...updates,
+        currency: updates.currency != null
+          ? String(updates.currency || 'PLN').toUpperCase()
+          : (p.currency || 'PLN').toUpperCase(),
+        updatedAt: Date.now(),
+      }
+      : p
   );
   const updated = prices.find(p => p.id === id);
   await adapter.put(STORES.SERVICE_PRICES, updated);
@@ -302,7 +359,13 @@ export async function updateServicePrice(id, updates) {
 // --- Pallet Prices Actions ---
 
 export async function addPalletPrice(priceRecord) {
-  const record = { id: generateId(), ...priceRecord, createdAt: Date.now(), updatedAt: Date.now() };
+  const record = {
+    id: generateId(),
+    ...priceRecord,
+    currency: (priceRecord.currency || 'PLN').toUpperCase(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
   await adapter.put(STORES.PALLET_PRICES, record);
   setState({ palletPrices: [...getState().palletPrices, record] });
   return record;
@@ -310,7 +373,16 @@ export async function addPalletPrice(priceRecord) {
 
 export async function updatePalletPrice(id, updates) {
   const prices = getState().palletPrices.map(p =>
-    p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
+    p.id === id
+      ? {
+        ...p,
+        ...updates,
+        currency: updates.currency != null
+          ? String(updates.currency || 'PLN').toUpperCase()
+          : (p.currency || 'PLN').toUpperCase(),
+        updatedAt: Date.now(),
+      }
+      : p
   );
   const updated = prices.find(p => p.id === id);
   await adapter.put(STORES.PALLET_PRICES, updated);
@@ -402,13 +474,13 @@ export async function seedInitialData() {
   // --- Service definitions ---
   if (state.serviceDefinitions.length === 0) {
     const services = [
-      { id: 'svc-pallets-in', name: 'Wejście palet', unit: 'PALLET', description: 'Przyjęcie palet na magazyn' },
-      { id: 'svc-pallets-out', name: 'Wyjście palet', unit: 'PALLET', description: 'Wydanie palet z magazynu' },
-      { id: 'svc-storage', name: 'Stan magazynowy', unit: 'PALLET', description: 'Opłata za stan magazynowy (gdy brak ruchów)' },
-      { id: 'svc1', name: 'Transport', unit: 'KM', description: 'Usługa transportowa' },
-      { id: 'svc2', name: 'Magazynowanie', unit: 'PALLET', description: 'Składowanie na paletach' },
-      { id: 'svc3', name: 'Pakowanie', unit: 'PIECE', description: 'Usługa pakowania' },
-      { id: 'svc4', name: 'Przeładunek', unit: 'HOUR', description: 'Przeładunek towarów' },
+      { id: 'svc-pallets-in', name: 'Wejście palet', unit: 'PALLET', category: 'SYSTEM', description: 'Przyjęcie palet na magazyn' },
+      { id: 'svc-pallets-out', name: 'Wyjście palet', unit: 'PALLET', category: 'SYSTEM', description: 'Wydanie palet z magazynu' },
+      { id: 'svc-storage', name: 'Stan magazynowy', unit: 'PALLET', category: 'SYSTEM', description: 'Opłata za stan magazynowy (gdy brak ruchów)' },
+      { id: 'svc1', name: 'Transport', unit: 'KM', category: 'TRANSPORT', description: 'Usługa transportowa' },
+      { id: 'svc2', name: 'Magazynowanie', unit: 'PALLET', category: 'VASY', description: 'Składowanie na paletach' },
+      { id: 'svc3', name: 'Pakowanie', unit: 'PIECE', category: 'VASY', description: 'Usługa pakowania' },
+      { id: 'svc4', name: 'Przeładunek', unit: 'HOUR', category: 'VASY', description: 'Przeładunek towarów' },
     ];
     await adapter.putMany(STORES.SERVICE_DEFINITIONS, services);
     setState({ serviceDefinitions: services });
@@ -869,8 +941,14 @@ async function seedDemoData(palletTypes) {
 
 // --- Service Definition Actions ---
 
-export async function addServiceDefinition(name, unit, description = '') {
-  const serviceDef = { id: generateId(), name, unit, description };
+export async function addServiceDefinition(name, unit, description = '', category = 'VASY') {
+  const serviceDef = {
+    id: generateId(),
+    name,
+    unit,
+    description,
+    category: normalizeServiceCategory(category, name),
+  };
   await adapter.put(STORES.SERVICE_DEFINITIONS, serviceDef);
   setState({ serviceDefinitions: [...getState().serviceDefinitions, serviceDef] });
   return serviceDef;
@@ -878,7 +956,16 @@ export async function addServiceDefinition(name, unit, description = '') {
 
 export async function updateServiceDefinition(id, updates) {
   const serviceDefinitions = getState().serviceDefinitions.map(s =>
-    s.id === id ? { ...s, ...updates } : s
+    s.id === id
+      ? {
+        ...s,
+        ...updates,
+        category: normalizeServiceCategory(
+          updates.category != null ? updates.category : s.category,
+          updates.name != null ? updates.name : s.name
+        ),
+      }
+      : s
   );
   const updated = serviceDefinitions.find(s => s.id === id);
   await adapter.put(STORES.SERVICE_DEFINITIONS, updated);
